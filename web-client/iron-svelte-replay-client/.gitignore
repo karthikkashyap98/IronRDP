@@ -9,6 +9,9 @@ node_modules
 /build
 /dist
 
+# Generated WASM
+/static/wasm/
+
 # OS
 .DS_Store
 Thumbs.db

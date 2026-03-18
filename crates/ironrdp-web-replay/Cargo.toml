@@ -18,6 +18,10 @@ ironrdp-pdu = { path = "../ironrdp-pdu" }
 ironrdp-core = { path = "../ironrdp-core" }
 wasm-bindgen = "0.2"
 
+[dependencies.web-sys]
+version = "0.3"
+features = ["HtmlCanvasElement"]
+
 [lib]
 doctest = false
 test = false
