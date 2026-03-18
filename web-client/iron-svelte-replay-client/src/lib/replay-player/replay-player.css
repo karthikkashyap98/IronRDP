@@ -1,0 +1,29 @@
+.replay-player {
+	border: 1px solid #ccc;
+	padding: 12px;
+}
+
+.metadata {
+	display: flex;
+	gap: 16px;
+	margin-bottom: 12px;
+	font-size: 14px;
+	color: #666;
+}
+
+.error {
+	color: #d32f2f;
+}
+
+.canvas-container {
+	position: relative;
+	width: 100%;
+	aspect-ratio: 16 / 9;
+}
+
+canvas {
+	display: block;
+	width: 100%;
+	height: 100%;
+	background: #000;
+}

@@ -1,0 +1,27 @@
+[package]
+name = "ironrdp-web-replay"
+version = "0.1.0"
+publish = false
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+ironrdp-session = { path = "../ironrdp-session" }
+ironrdp-connector = { path = "../ironrdp-connector" }
+ironrdp-graphics = { path = "../ironrdp-graphics" }
+ironrdp-pdu = { path = "../ironrdp-pdu" }
+ironrdp-core = { path = "../ironrdp-core" }
+wasm-bindgen = "0.2"
+
+[lib]
+doctest = false
+test = false
+crate-type = ["cdylib", "rlib"]
+
+[lints]
+workspace = true
