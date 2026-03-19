@@ -3051,6 +3051,7 @@ dependencies = [
  "ironrdp-graphics",
  "ironrdp-pdu",
  "ironrdp-session",
+ "ironrdp-svc",
  "wasm-bindgen",
  "web-sys",
 ]

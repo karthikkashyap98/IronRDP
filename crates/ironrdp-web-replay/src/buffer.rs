@@ -28,6 +28,12 @@ impl Pdu {
     pub fn data(&self) -> Vec<u8> {
         self.data.clone()
     }
+
+    /// Internal accessor for Rust callers - avoids clone
+    #[expect(dead_code, reason = "will be used in Replay integration")]
+    pub(crate) fn data_ref(&self) -> &[u8] {
+        &self.data
+    }
 }
 
 struct PduEntry {

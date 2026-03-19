@@ -12,7 +12,6 @@ categories.workspace = true
 
 [dependencies]
 ironrdp-session = { path = "../ironrdp-session" }
-ironrdp-connector = { path = "../ironrdp-connector" }
 ironrdp-graphics = { path = "../ironrdp-graphics" }
 ironrdp-pdu = { path = "../ironrdp-pdu" }
 ironrdp-core = { path = "../ironrdp-core" }

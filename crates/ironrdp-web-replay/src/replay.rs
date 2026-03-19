@@ -7,15 +7,16 @@ use crate::buffer::PduBuffer;
 pub struct Replay {
     pdu_buffer: PduBuffer,
     current_time_ms: f64,
+    #[expect(dead_code, reason = "will be used for canvas rendering")]
     canvas: HtmlCanvasElement,
 }
 
 #[wasm_bindgen]
 impl Replay {
     #[wasm_bindgen(constructor)]
-    pub fn new(canvas: HtmlCanvasElement, pdu_buffer: PduBuffer) -> Self {
+    pub fn new(canvas: HtmlCanvasElement) -> Self {
         Self {
-            pdu_buffer,
+            pdu_buffer: PduBuffer::new(),
             current_time_ms: 0.0,
             canvas,
         }
