@@ -2,7 +2,7 @@
 export { default as ReplayPlayer } from './replay-player/ReplayPlayer.svelte';
 
 // Recording fetch API
-export { fetchHeader, fetchIndexTable } from './fetchRecording.js';
+export { fetchHeader, fetchIndexTable } from './replay-player/buffer/fetchRecording.js';
 
 // Types
 export type { Header, IndexTableRow, PDUEntry } from '../types/recording.types.js';

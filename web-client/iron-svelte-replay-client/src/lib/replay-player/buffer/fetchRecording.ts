@@ -1,9 +1,9 @@
-import type { Header, IndexTableRow } from '../types/recording.types.js'
+import type { Header, IndexTableRow } from '../../../types/recording.types.js';
 
 const HEADER_SIZE = 20;
 const INDEX_ROW_SIZE = 17;
 
-async function fetchFileRanges(url: string, startBytes: number, endBytes: number): Promise<ArrayBuffer> {
+export async function fetchFileRanges(url: string, startBytes: number, endBytes: number): Promise<ArrayBuffer> {
 	const response = await fetch(url, {
 		headers: { Range: `bytes=${startBytes}-${endBytes}` }
 	});
