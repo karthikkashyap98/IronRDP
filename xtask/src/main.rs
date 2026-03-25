@@ -112,6 +112,7 @@ fn main() -> anyhow::Result<()> {
         Action::WebBuild => web::build(&sh, false)?,
         Action::WebInstall => web::install(&sh)?,
         Action::WebRun => web::run(&sh)?,
+        Action::WebBuildReplay => web::build_replay(&sh, false)?,
         Action::FfiInstall => ffi::install(&sh)?,
         Action::FfiBuildDll { release } => ffi::build_dynamic_lib(&sh, release)?,
         Action::FfiBuildBindings { skip_dotnet_build } => ffi::build_bindings(&sh, skip_dotnet_build)?,

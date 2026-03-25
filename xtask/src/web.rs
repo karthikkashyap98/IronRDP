@@ -7,6 +7,8 @@ const IRON_REMOTE_DESKTOP_RDP_PATH: &str = "./web-client/iron-remote-desktop-rdp
 const IRON_SVELTE_CLIENT_PATH: &str = "./web-client/iron-svelte-client";
 const IRONRDP_WEB_PATH: &str = "./crates/ironrdp-web";
 const IRONRDP_WEB_PACKAGE_JS_PATH: &str = "./crates/ironrdp-web/pkg/ironrdp_web.js";
+const IRONRDP_WEB_REPLAY_PATH: &str = "./crates/ironrdp-web-replay";
+const IRONRDP_WEB_REPLAY_PACKAGE_JS_PATH: &str = "./crates/ironrdp-web-replay/pkg/ironrdp_web_replay.js";
 
 #[cfg(not(target_os = "windows"))]
 const NPM: &str = "npm";
@@ -73,6 +75,31 @@ pub fn build(sh: &Shell, wasm_pack_dev: bool) -> anyhow::Result<()> {
     fs::write(&ironrdp_web_js_file_path, ironrdp_web_js_content)?;
 
     run_cmd_in!(sh, IRON_SVELTE_CLIENT_PATH, "{NPM} run build-no-wasm")?;
+
+    Ok(())
+}
+
+pub fn build_replay(sh: &Shell, wasm_pack_dev: bool) -> anyhow::Result<()> {
+    let _s = Section::new("WEB-BUILD-REPLAY");
+
+    if wasm_pack_dev {
+        run_cmd_in!(sh, IRONRDP_WEB_REPLAY_PATH, "wasm-pack build --dev --target web")?;
+    } else {
+        let _env_guard = sh.push_env(
+            "RUSTFLAGS",
+            "-Ctarget-feature=+simd128,+bulk-memory --cfg getrandom_backend=\"wasm_js\"",
+        );
+        run_cmd_in!(sh, IRONRDP_WEB_REPLAY_PATH, "wasm-pack build --target web")?;
+    }
+
+    let js_path = sh.current_dir().join(IRONRDP_WEB_REPLAY_PACKAGE_JS_PATH);
+    let js_content = fs::read_to_string(&js_path)?;
+
+    // Patch: replace inline URL with a Vite-compatible import so bundler can handle .wasm
+    let js_content = format!("import wasmUrl from './ironrdp_web_replay_bg.wasm?url';\n\n{js_content}");
+    let js_content = js_content.replace("new URL('ironrdp_web_replay_bg.wasm', import.meta.url)", "wasmUrl");
+
+    fs::write(&js_path, js_content)?;
 
     Ok(())
 }

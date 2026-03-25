@@ -53,34 +53,91 @@ All multi-byte integers are stored in **big-endian** format.
 
 ## Development
 
+### Prerequisites
+
+- Rust toolchain (see `rust-toolchain.toml` at the repo root)
+- `wasm-pack` — installed automatically by xtask bootstrap
+- Node.js + npm
+
+### First-time setup
+
 ```sh
-# Install dependencies
+# From the repo root: install all tools (wasm-pack, cargo tools, npm deps)
+cargo xtask bootstrap -v
+```
+
+### Build steps
+
+**1. Build the WASM package** (run from repo root)
+
+```sh
+cargo xtask web build-replay -v
+```
+
+This compiles `crates/ironrdp-web-replay` to WebAssembly via `wasm-pack` and
+patches the generated JS so Vite can bundle the `.wasm` file correctly.
+Output lands in `crates/ironrdp-web-replay/pkg/` (gitignored).
+
+**2. Install npm dependencies** (run from this directory)
+
+```sh
 npm install
+```
 
-# Start development server
-npm run dev
+**3. Type check**
 
-# Type check
+```sh
 npm run check
+```
 
-# Build the library
+**4. Build the library**
+
+```sh
+# Build without rebuilding WASM (WASM must already be built — step 1)
+npm run build-no-wasm
+
+# Full build: rebuilds WASM then builds the library
 npm run build
 ```
+
+**5. Development server**
+
+```sh
+# Start dev server (WASM must already be built — step 1)
+npm run dev
+```
+
+### npm scripts
+
+| Script | Description |
+|--------|-------------|
+| `pre-build` | Runs `cargo xtask web build-replay` from the repo root |
+| `build` | Runs `pre-build` then Vite build + package |
+| `build-no-wasm` | Vite build + package, skipping WASM rebuild |
+| `dev` | Start Vite dev server (WASM must be pre-built) |
+| `check` | Run `svelte-check` for TypeScript diagnostics |
+| `check:watch` | Same, in watch mode |
 
 ## Project Structure
 
 ```
 src/lib/
 ├── replay-player/
-│   ├── ReplayPlayer.svelte           # Main component
-│   ├── replay-player.css             # Styles
-│   ├── replay-player.store.svelte.ts # State management
-│   └── replay-player.types.ts        # Component types
-├── fetchRecording.ts                 # HTTP Range request utilities
-└── index.ts                          # Public exports
+│   ├── wasm/
+│   │   └── index.ts                      # WASM init, Replay re-export, WasmReplay interface
+│   ├── buffer/
+│   │   ├── PduFetcher.ts                 # Buffered PDU fetch logic
+│   │   └── fetchRecording.ts             # HTTP Range request utilities
+│   ├── ReplayPlayer.svelte               # Main component
+│   ├── replay-player.css                 # Styles
+│   ├── replay-player.store.svelte.ts     # State management
+│   └── replay-player.types.ts            # Component types
+└── index.ts                              # Public exports
 
 src/types/
-└── recording.types.ts                # Recording file format types
+└── recording.types.ts                    # Recording file format types
+
+crates/ironrdp-web-replay/pkg/            # wasm-pack output (gitignored, built by xtask)
 ```
 
 This library is part of the [IronRDP] project.

@@ -3,7 +3,9 @@
 	"version": "0.0.1",
 	"scripts": {
 		"dev": "vite dev",
-		"build": "vite build && npm run prepack",
+		"pre-build": "node ./pre-build.js",
+		"build": "npm run pre-build && vite build && npm run prepack",
+		"build-no-wasm": "vite build && npm run prepack",
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",
 		"prepack": "svelte-kit sync && svelte-package && publint",
@@ -39,7 +41,9 @@
 		"svelte": "^5.51.0",
 		"svelte-check": "^4.4.2",
 		"typescript": "^5.9.3",
-		"vite": "^7.3.1"
+		"vite": "^7.3.1",
+		"vite-plugin-top-level-await": "^1.4.0",
+		"vite-plugin-wasm": "^3.3.0"
 	},
 	"keywords": [
 		"svelte"
