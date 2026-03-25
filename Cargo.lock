@@ -3046,12 +3046,10 @@ dependencies = [
 name = "ironrdp-web-replay"
 version = "0.1.0"
 dependencies = [
- "ironrdp-connector",
  "ironrdp-core",
  "ironrdp-graphics",
  "ironrdp-pdu",
  "ironrdp-session",
- "ironrdp-svc",
  "wasm-bindgen",
  "web-sys",
 ]

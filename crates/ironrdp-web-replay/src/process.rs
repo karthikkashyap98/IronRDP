@@ -84,10 +84,10 @@ pub struct ReplayProcessor {
 }
 
 impl ReplayProcessor {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let fast_path_processor = fast_path::ProcessorBuilder {
-            io_channel_id: 1003,
-            user_channel_id: 1007,
+            io_channel_id: 1003, // TODO: Extract from PDUs?
+            user_channel_id: 1002,
             share_id: 0x0001_0000, // TODO: Figure impact of this
             enable_server_pointer: true,
             pointer_software_rendering: false,
@@ -141,11 +141,7 @@ impl ReplayProcessor {
     }
 
     /// Process a server PDU (graphics, pointers)
-    pub fn process_server_pdu(
-        &mut self,
-        image: &mut DecodedImage,
-        pdu: &[u8],
-    ) -> Result<Vec<ProcessResult>, ProcessError> {
+    fn process_server_pdu(&mut self, image: &mut DecodedImage, pdu: &[u8]) -> Result<Vec<ProcessResult>, ProcessError> {
         let mut response_buffer = WriteBuf::new();
         let updates = self
             .fast_path_processor
@@ -154,7 +150,7 @@ impl ReplayProcessor {
 
         let mut results = Vec::new();
         for update in updates {
-            // Track pointer state changes (always, even during seeking)
+            // Track pointer state changes (always, even during seeking).
             match &update {
                 UpdateKind::PointerBitmap(pointer) => {
                     self.current_pointer = PointerState::Bitmap(Arc::clone(pointer));
@@ -168,7 +164,7 @@ impl ReplayProcessor {
                 _ => {}
             }
 
-            // Filter visual results based on update_canvas
+            // Filter visual results based on update_canvas.
             let is_visual = matches!(
                 update,
                 UpdateKind::Region(_)
@@ -187,7 +183,7 @@ impl ReplayProcessor {
     }
 
     /// Process a client PDU (mouse/keyboard input)
-    pub fn process_client_pdu(&self, pdu: &[u8]) -> Result<Vec<ProcessResult>, ProcessError> {
+    fn process_client_pdu(&self, pdu: &[u8]) -> Result<Vec<ProcessResult>, ProcessError> {
         // Early return - skip decode when results will be suppressed
         if !self.update_canvas {
             return Ok(Vec::new());
@@ -210,7 +206,7 @@ impl ReplayProcessor {
                         y: mouse.y_position,
                     });
                 }
-                _ => {} // Keyboard events ignored for replay
+                _ => {} //TODO: Handle Keyboard events, ignored for now
             }
         }
 
@@ -218,8 +214,26 @@ impl ReplayProcessor {
     }
 
     /// Process an X224 PDU (session control, resolution changes)
-    pub fn process_x224(&self, pdu: &[u8]) -> Result<Vec<ProcessResult>, ProcessError> {
+    fn process_x224(&self, pdu: &[u8]) -> Result<Vec<ProcessResult>, ProcessError> {
         let x224 = decode::<X224<McsMessage<'_>>>(pdu).map_err(|e| ProcessError::Decode(format!("{e}")))?;
+
+        fn process_share_control(pdu: &ShareControlPdu) -> Result<Vec<ProcessResult>, ProcessError> {
+            match pdu {
+                ShareControlPdu::ServerDemandActive(sda) => {
+                    if let Some((width, height)) = sda.pdu.capability_sets.iter().find_map(|c| match c {
+                        CapabilitySet::Bitmap(b) => Some((b.desktop_width, b.desktop_height)),
+                        _ => None,
+                    }) {
+                        // Always emit ResolutionChanged (even during seeking)
+                        Ok(vec![ProcessResult::ResolutionChanged { width, height }])
+                    } else {
+                        Ok(vec![])
+                    }
+                }
+                ShareControlPdu::ServerDeactivateAll(_) => Ok(vec![ProcessResult::SessionDeactivated]),
+                _ => Ok(vec![]),
+            }
+        }
 
         match x224.0 {
             McsMessage::SendDataIndication(sdi) => {
@@ -235,23 +249,6 @@ impl ReplayProcessor {
 }
 
 /// Process ShareControlPdu for resolution changes
-fn process_share_control(pdu: &ShareControlPdu) -> Result<Vec<ProcessResult>, ProcessError> {
-    match pdu {
-        ShareControlPdu::ServerDemandActive(sda) => {
-            if let Some((width, height)) = sda.pdu.capability_sets.iter().find_map(|c| match c {
-                CapabilitySet::Bitmap(b) => Some((b.desktop_width, b.desktop_height)),
-                _ => None,
-            }) {
-                // Always emit ResolutionChanged (even during seeking)
-                Ok(vec![ProcessResult::ResolutionChanged { width, height }])
-            } else {
-                Ok(vec![])
-            }
-        }
-        ShareControlPdu::ServerDeactivateAll(_) => Ok(vec![ProcessResult::SessionDeactivated]),
-        _ => Ok(vec![]),
-    }
-}
 
 impl Default for ReplayProcessor {
     fn default() -> Self {

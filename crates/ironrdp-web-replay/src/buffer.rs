@@ -5,9 +5,9 @@ use wasm_bindgen::prelude::*;
 #[wasm_bindgen]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PduSource {
-    /// PDU from client (C→S), e.g., mouse/keyboard input
+    /// PDU from client (C→S)
     Client = 0,
-    /// PDU from server (S→C), e.g., graphics updates
+    /// PDU from server (S→C)
     Server = 1,
 }
 
@@ -30,7 +30,6 @@ impl Pdu {
     }
 
     /// Internal accessor for Rust callers - avoids clone
-    #[expect(dead_code, reason = "will be used in Replay integration")]
     pub(crate) fn data_ref(&self) -> &[u8] {
         &self.data
     }
