@@ -17,13 +17,56 @@
 
 .canvas-container {
 	position: relative;
-	width: 100%;
-	aspect-ratio: 16 / 9;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: #000;
 }
 
 canvas {
 	display: block;
-	width: 100%;
-	height: 100%;
-	background: #000;
+	max-width: 100%;
+	max-height: calc(100vh - 120px);
+	width: auto;
+	height: auto;
+}
+
+.buffering-overlay {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: rgba(0, 0, 0, 0.5);
+	z-index: 1;
+}
+
+.buffering-label {
+	color: #fff;
+	font-size: 18px;
+	font-weight: 500;
+}
+
+.controls {
+	display: flex;
+	gap: 8px;
+	margin-top: 10px;
+}
+
+.control-btn {
+	padding: 6px 18px;
+	font-size: 14px;
+	cursor: pointer;
+	border: 1px solid #999;
+	border-radius: 4px;
+	background: #f5f5f5;
+}
+
+.control-btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.control-btn:not(:disabled):hover {
+	background: #e0e0e0;
 }
