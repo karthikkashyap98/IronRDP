@@ -136,7 +136,7 @@ impl ReplayProcessor {
         match (action, source) {
             (Action::FastPath, PduSource::Server) => self.process_server_pdu(image, pdu),
             (Action::FastPath, PduSource::Client) => self.process_client_pdu(pdu),
-            (Action::X224, _) => self.process_x224(pdu),
+            (Action::X224, _) => Self::process_x224(pdu),
         }
     }
 
@@ -214,8 +214,20 @@ impl ReplayProcessor {
     }
 
     /// Process an X224 PDU (session control, resolution changes)
-    fn process_x224(&self, pdu: &[u8]) -> Result<Vec<ProcessResult>, ProcessError> {
+    fn process_x224(pdu: &[u8]) -> Result<Vec<ProcessResult>, ProcessError> {
         let x224 = decode::<X224<McsMessage<'_>>>(pdu).map_err(|e| ProcessError::Decode(format!("{e}")))?;
+
+        let result = match x224.0 {
+            McsMessage::SendDataIndication(sdi) => {
+                if let Ok(header) = decode::<ShareControlHeader>(&sdi.user_data) {
+                    return process_share_control(&header.share_control_pdu);
+                }
+                Ok(vec![])
+            }
+            McsMessage::DisconnectProviderUltimatum(_) => Ok(vec![ProcessResult::SessionEnded]),
+            _ => Ok(vec![]),
+        };
+        return result;
 
         fn process_share_control(pdu: &ShareControlPdu) -> Result<Vec<ProcessResult>, ProcessError> {
             match pdu {
@@ -234,21 +246,8 @@ impl ReplayProcessor {
                 _ => Ok(vec![]),
             }
         }
-
-        match x224.0 {
-            McsMessage::SendDataIndication(sdi) => {
-                if let Ok(header) = decode::<ShareControlHeader>(&sdi.user_data) {
-                    return process_share_control(&header.share_control_pdu);
-                }
-                Ok(vec![])
-            }
-            McsMessage::DisconnectProviderUltimatum(_) => Ok(vec![ProcessResult::SessionEnded]),
-            _ => Ok(vec![]),
-        }
     }
 }
-
-/// Process ShareControlPdu for resolution changes
 
 impl Default for ReplayProcessor {
     fn default() -> Self {

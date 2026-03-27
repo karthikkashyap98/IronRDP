@@ -19,7 +19,14 @@ wasm-bindgen = "0.2"
 
 [dependencies.web-sys]
 version = "0.3"
-features = ["console", "HtmlCanvasElement", "CanvasRenderingContext2d", "ImageData"]
+features = [
+    "console",
+    "HtmlCanvasElement",
+    "CanvasRenderingContext2d",
+    "ImageData",
+    "OffscreenCanvas",
+    "OffscreenCanvasRenderingContext2d",
+]
 
 [lib]
 doctest = false
