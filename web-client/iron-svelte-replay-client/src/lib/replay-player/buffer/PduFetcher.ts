@@ -1,5 +1,6 @@
 import { fetchFileRanges } from './fetchRecording.js';
 import type { IndexTableRow } from '../../../types/recording.types.js';
+import type { FetchOptions } from '../replay-player.types.js';
 import type { WasmReplay } from '../wasm/index.js';
 
 export type { WasmReplay };
@@ -20,15 +21,18 @@ export class PduFetcher {
 	private readonly url: string;
 	private readonly indexTable: IndexTableRow[];
 	private readonly wasmReplay: WasmReplay;
+	private readonly fetchOptions?: FetchOptions;
 
 	private _nextFetchIndex = 0;
 	private _lastPushedTimestamp = 0;
 	private _fetchingPromise: Promise<void> | null = null;
+	private _fetchVersion = 0;
 
-	constructor(url: string, indexTable: IndexTableRow[], wasmReplay: WasmReplay) {
+	constructor(url: string, indexTable: IndexTableRow[], wasmReplay: WasmReplay, fetchOptions?: FetchOptions) {
 		this.url = url;
 		this.indexTable = indexTable;
 		this.wasmReplay = wasmReplay;
+		this.fetchOptions = fetchOptions;
 	}
 
 	/** True while a fetch is in-flight. */
@@ -46,6 +50,19 @@ export class PduFetcher {
 			return Infinity;  // All fetched
 		}
 		return this.indexTable[this._nextFetchIndex].timeOffset;
+	}
+
+	/**
+	 * Reset fetch position to the beginning of the recording.
+	 * Called before a backward seek — after wasmReplay.reset() has been called.
+	 * Increments _fetchVersion so any in-flight doFetch coroutine bails without
+	 * mutating shared state or pushing PDUs to the reset WASM instance.
+	 */
+	reset(): void {
+		this._fetchVersion++;
+		this._nextFetchIndex = 0;
+		this._lastPushedTimestamp = 0;
+		this._fetchingPromise = null;
 	}
 
 	/**
@@ -74,16 +91,20 @@ export class PduFetcher {
 		const targetIndex = this.binarySearchTarget(targetMs);
 		if (targetIndex < this._nextFetchIndex) return;
 
-		this._fetchingPromise = this.doFetch(targetIndex);
+		const p = this.doFetch(targetIndex);
+		this._fetchingPromise = p;
 
 		try {
-			await this._fetchingPromise;
+			await p;
 		} finally {
-			this._fetchingPromise = null;
+			if (this._fetchingPromise === p) {
+				this._fetchingPromise = null;
+			}
 		}
 	}
 
 	private async doFetch(targetIndex: number): Promise<void> {
+		const version = this._fetchVersion;
 		const startEntry = this.indexTable[this._nextFetchIndex];
 		const endEntry = this.indexTable[targetIndex];
 
@@ -92,7 +113,7 @@ export class PduFetcher {
 
 		let buffer: ArrayBuffer;
 		try {
-			buffer = await fetchFileRanges(this.url, startByte, endByte);
+			buffer = await fetchFileRanges(this.url, startByte, endByte, this.fetchOptions);
 		} catch (e) {
 			throw new Error(`Network error fetching bytes ${startByte}-${endByte}: ${e}`);
 		}
@@ -101,6 +122,8 @@ export class PduFetcher {
 		const fullView = new Uint8Array(buffer);
 
 		for (let i = this._nextFetchIndex; i <= targetIndex; i++) {
+			if (this._fetchVersion !== version) return; // superseded by reset() — bail without mutating state
+
 			const entry = this.indexTable[i];
 			const entryStart = Number(entry.byteOffset) - startByte;
 			// subarray() returns a view (no copy) — WASM pushPdu copies into linear memory

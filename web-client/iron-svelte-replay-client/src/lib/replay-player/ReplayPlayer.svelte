@@ -1,14 +1,16 @@
 <script lang="ts">
     import { createReplayStore } from './replay-player.store.svelte.js';
     import { initWasm, Replay } from './wasm/index.js';
+    import type { FetchOptions } from './replay-player.types.js';
     import SeekBar from './SeekBar.svelte';
     import PlaybackControls from './PlaybackControls.svelte';
 
     interface Props {
         url: string;
+        fetchOptions?: FetchOptions;
     }
 
-    let { url }: Props = $props();
+    let { url, fetchOptions }: Props = $props();
 
     const store = createReplayStore();
     let canvas: HTMLCanvasElement;
@@ -38,7 +40,7 @@
 
     $effect(() => {
         if (url) {
-            store.initialiseRecording(url);
+            store.initialiseRecording(url, fetchOptions);
         }
     });
 
@@ -90,7 +92,7 @@
     }
 
     const isBuffering = $derived(store.playbackState.waiting);
-    const canPlay     = $derived(wasmReady && !store.playbackState.seeking);
+    const canPlay     = $derived(store.canControlPlayback());
 </script>
 
 <div class="replay-player" bind:this={playerDiv}>
@@ -100,8 +102,14 @@
         <p class="error">Error: {store.loadState.message}</p>
     {/if}
 
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="canvas-container" onmousemove={showControls}>
+    <div
+        class="canvas-container"
+        role="button"
+        tabindex="0"
+        onmousemove={showControls}
+        onclick={() => store.togglePlayback()}
+        onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); store.togglePlayback(); } }}
+    >
         {#if isBuffering}
             <div class="buffering-overlay">
                 <span class="buffering-label">Buffering...</span>
@@ -110,12 +118,13 @@
         <canvas bind:this={canvas}></canvas>
 
         {#if store.loadState.status === 'ready' && wasmReady}
-            <div class="controls-overlay" class:hidden={!controlsVisible}>
+            <div class="controls-overlay" class:hidden={!controlsVisible} role="toolbar" aria-label="Playback controls" tabindex="-1" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
                 <SeekBar
                     elapsed={store.elapsed}
                     duration={store.header?.duration ?? 0}
                     fetchedUntilMs={store.fetchedUntilMs}
                     waiting={store.playbackState.waiting}
+                    onseekend={(ms) => store.seek(ms)}
                 />
                 <PlaybackControls
                     paused={store.playbackState.paused}

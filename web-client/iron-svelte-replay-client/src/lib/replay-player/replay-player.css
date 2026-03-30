@@ -81,7 +81,7 @@ canvas {
 
 .seekbar {
 	width: 100%;
-	padding: 8px 0;
+	padding: 16px 0;
 	cursor: default;
 	box-sizing: border-box;
 }
@@ -93,6 +93,15 @@ canvas {
 	background: rgba(255, 255, 255, 0.15);
 	border-radius: 2px;
 	overflow: visible;
+	transition: height 0.15s ease;
+}
+
+.seekbar.interactive {
+	cursor: pointer;
+}
+
+.seekbar.interactive:hover .seekbar-track {
+	height: 6px;
 }
 
 .seekbar-buffer {
@@ -124,8 +133,13 @@ canvas {
 	border-radius: 50%;
 	transform: translate(-50%, -50%);
 	pointer-events: none;
-	transition: opacity 0.15s ease;
+	transition: opacity 0.15s ease, width 0.15s ease, height 0.15s ease;
 	box-shadow: 0 0 4px rgba(74, 158, 255, 0.6);
+}
+
+.seekbar.interactive:hover .seekbar-head {
+	width: 16px;
+	height: 16px;
 }
 
 .seekbar-head.waiting {

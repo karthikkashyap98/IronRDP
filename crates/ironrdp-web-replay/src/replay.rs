@@ -131,7 +131,7 @@ impl Replay {
                 }
             }
 
-            if frame_dirty {
+            if frame_dirty && self.processor.update_canvas() {
                 self.draw_to_canvas();
             }
 
@@ -161,6 +161,7 @@ impl Replay {
     /// not displaying the canvas between reset() and the first render_till() call.
     pub fn reset(&mut self) {
         self.current_time_ms = 0.0;
+        self.pdu_buffer = PduBuffer::new();
         self.image = DecodedImage::new(PixelFormat::RgbA32, DEFAULT_WIDTH, DEFAULT_HEIGHT);
         self.processor = ReplayProcessor::new();
         self.pointer_hidden = false;
@@ -170,6 +171,13 @@ impl Replay {
         self.mouse_y = 0;
         // Drop the cached OffscreenCanvas to free the JS object reference.
         self.cursor_canvas = None;
+    }
+
+    /// Enable or disable canvas updates during rendering.
+    /// Set to false during seek fast-forward to suppress intermediate frame blits.
+    #[wasm_bindgen(js_name = setUpdateCanvas)]
+    pub fn set_update_canvas(&mut self, update: bool) {
+        self.processor.set_update_canvas(update);
     }
 
     /// Blit framebuffer to canvas using putImageData, then composite cursor on top.

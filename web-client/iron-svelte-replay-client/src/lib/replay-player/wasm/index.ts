@@ -7,6 +7,8 @@ export interface WasmReplay {
 	free(): void;
 	pushPdu(timestamp_ms: number, source: number, data: Uint8Array): void;
 	renderTill(target_ms: number): unknown;
+	reset(): void;
+	setUpdateCanvas(update: boolean): void;
 }
 
 export async function initWasm(): Promise<void> {

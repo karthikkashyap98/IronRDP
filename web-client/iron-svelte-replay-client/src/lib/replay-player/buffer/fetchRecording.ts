@@ -1,11 +1,29 @@
 import type { Header, IndexTableRow } from '../../../types/recording.types.js';
+import type { FetchOptions } from '../replay-player.types.js';
 
 const HEADER_SIZE = 20;
 const INDEX_ROW_SIZE = 17;
 
-export async function fetchFileRanges(url: string, startBytes: number, endBytes: number): Promise<ArrayBuffer> {
+async function resolveFetchOptions(opts?: FetchOptions): Promise<RequestInit> {
+	if (!opts) return {};
+	return typeof opts === 'function' ? await opts() : opts;
+}
+
+export async function fetchFileRanges(
+	url: string,
+	startBytes: number,
+	endBytes: number,
+	fetchOptions?: FetchOptions,
+): Promise<ArrayBuffer> {
+	const resolved = await resolveFetchOptions(fetchOptions);
+	const { headers: extraHeaders, ...restInit } = resolved;
+
 	const response = await fetch(url, {
-		headers: { Range: `bytes=${startBytes}-${endBytes}` }
+		...restInit,
+		headers: {
+			...Object.fromEntries(new Headers(extraHeaders as HeadersInit).entries()),
+			Range: `bytes=${startBytes}-${endBytes}`,
+		},
 	});
 	if (!response.ok) {
 		throw new Error(`HTTP error status: ${response.status}`);
@@ -42,13 +60,13 @@ function parseIndexTable(buffer: ArrayBuffer, startOffset: number, count: number
 }
 
 
-export async function fetchHeader(url: string): Promise<Header> {
-	const buffer = await fetchFileRanges(url, 0, HEADER_SIZE - 1);
+export async function fetchHeader(url: string, fetchOptions?: FetchOptions): Promise<Header> {
+	const buffer = await fetchFileRanges(url, 0, HEADER_SIZE - 1, fetchOptions);
 	return parseHeader(buffer)
 }
 
-export async function fetchIndexTable(url: string, totalPDUs: number): Promise<IndexTableRow[]> {
+export async function fetchIndexTable(url: string, totalPDUs: number, fetchOptions?: FetchOptions): Promise<IndexTableRow[]> {
 	const endBytes = HEADER_SIZE + (INDEX_ROW_SIZE * totalPDUs) - 1;
-	const buffer = await fetchFileRanges(url, HEADER_SIZE, endBytes);
+	const buffer = await fetchFileRanges(url, HEADER_SIZE, endBytes, fetchOptions);
 	return parseIndexTable(buffer, 0, totalPDUs)
 }
