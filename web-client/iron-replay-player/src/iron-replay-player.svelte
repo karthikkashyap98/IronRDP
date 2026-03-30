@@ -102,6 +102,7 @@
             getLoadState: () => store.loadState,
             getPlayerError: () => store.playerError,
             clearError: () => store.clearError(),
+            reset: () => store.reset(),
         };
 
         playerDiv.dispatchEvent(
@@ -193,6 +194,7 @@
                     isFullscreen={isFullscreen}
                     onplay={() => store.play()}
                     onpause={() => store.pause()}
+                    onreset={() => store.reset()}
                     onspeedchange={(s) => store.setSpeed(s)}
                     onfullscreen={toggleFullscreen}
                 />

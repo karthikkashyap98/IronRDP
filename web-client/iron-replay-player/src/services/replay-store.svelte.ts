@@ -242,6 +242,11 @@ export function createReplayStore() {
         }
     }
 
+    // --- Reset: seek to beginning, preserving play/pause state ---
+    function reset(): Promise<void> {
+        return seek(0);
+    }
+
     // --- Speed: set playback speed ---
     function setSpeed(value: number): void {
         speed = value;
@@ -353,6 +358,7 @@ export function createReplayStore() {
         play,
         pause,
         seek,
+        reset,
         togglePlayback,
         setSpeed,
         setWasmReplay,

@@ -13,6 +13,7 @@
 		isFullscreen: boolean;
 		onplay: () => void;
 		onpause: () => void;
+		onreset: () => void;
 		onspeedchange: (speed: number) => void;
 		onfullscreen: () => void;
 	}
@@ -27,6 +28,7 @@
 		isFullscreen,
 		onplay,
 		onpause,
+		onreset,
 		onspeedchange,
 		onfullscreen,
 	}: Props = $props();
@@ -65,8 +67,16 @@
 </script>
 
 <div class="controls-bar">
-	<!-- Left group: play/pause + time -->
+	<!-- Left group: reset + play/pause + time -->
 	<div class="controls-left">
+		<button
+			class="play-btn"
+			onclick={onreset}
+			disabled={!canPlay}
+			aria-label="Reset to beginning"
+		>
+			⏮
+		</button>
 		<button
 			class="play-btn"
 			onclick={togglePlay}

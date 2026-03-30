@@ -23,4 +23,6 @@ export interface PlayerApi {
     getPlayerError(): PlayerFetchError | null;
     /** Reset the active fetch error. Consumer is responsible for retrying the failed operation. */
     clearError(): void;
+    /** Seek to position 0, preserving play/pause state. */
+    reset(): Promise<void>;
 }
