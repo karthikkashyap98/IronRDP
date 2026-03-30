@@ -180,6 +180,17 @@ impl Replay {
         self.processor.set_update_canvas(update);
     }
 
+    /// Unconditionally blit the current in-memory framebuffer to the canvas.
+    ///
+    /// Call this after a seek's fast-forward loop to display the final frame.
+    /// `renderTill` alone is insufficient here because all PDUs up to the seek
+    /// target have already been consumed by the chunk loop, so its inner loop
+    /// processes zero PDUs and `draw_to_canvas` is never reached.
+    #[wasm_bindgen(js_name = forceRedraw)]
+    pub fn force_redraw(&self) {
+        self.draw_to_canvas();
+    }
+
     /// Blit framebuffer to canvas using putImageData, then composite cursor on top.
     fn draw_to_canvas(&self) {
         let width = u32::from(self.image.width());

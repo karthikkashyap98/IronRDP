@@ -1,24 +1,37 @@
 <script lang="ts">
-    import { ReplayPlayer } from '$lib/index.js';
+    import { onMount } from 'svelte';
+    import { init, ReplayBackend } from '../../static/iron-replay-player-wasm/IronReplayPlayerWasm.js';
 
     const testUrl =
         'http://localhost:8000/e215009e7cb9ca3d71613d5454d8bd1c_59ee4d0f4822541dd854bf4006b058363f1510fcd468d087ae27f32cca17a47a.bin';
+    
+    // const testUrl = 'http://localhost:8000/'
+
+    let playerEl: HTMLElement | null = null;
+
+    onMount(async () => {
+        await init();
+
+        if (playerEl) {
+            // Rich object props must be set as JS properties, not HTML attributes
+            (playerEl as unknown as Record<string, unknown>).module = ReplayBackend;
+            (playerEl as unknown as Record<string, unknown>).url = testUrl;
+
+            playerEl.addEventListener('ready', (e: Event) => {
+                const customEvent = e as CustomEvent;
+                const playerApi = customEvent.detail.playerApi;
+                console.log('Player ready:', playerApi);
+            });
+        }
+    });
 </script>
 
-<!-- Test 3 RETEST: Fixed width AND height -->
-<!-- Expected: canvas contained within red border, no overflow below -->
-<!-- <div style="width: 640px; height: 360px; border: 2px solid red;">
-    <ReplayPlayer url={testUrl} />
-</div> -->
-
-<!-- Test 4 RETEST: Full viewport -->
-<!-- Expected: player fills viewport, canvas centered -->
-<!-- <div style="width: 100vw; height: 100vh; margin: 0; padding: 0;">
-    <ReplayPlayer url={testUrl} />
-</div> -->
-
-<!-- Test 5 RETEST: Fixed size, press Play and let run a few seconds -->
-<!-- Expected: canvas stays within red border while playing, no overflow -->
-<div style="width: 640px; height: 360px; border: 2px solid red;">
-    <ReplayPlayer url={testUrl} />
+<div style="width: 100vw; height: 100vh;">
+    <iron-replay-player bind:this={playerEl}></iron-replay-player>
 </div>
+
+<style>
+    :global(body) {
+        margin: 0px;
+    }
+</style>
