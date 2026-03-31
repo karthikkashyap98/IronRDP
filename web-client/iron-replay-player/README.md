@@ -16,15 +16,9 @@ Decoding is handled by a WASM engine injected at runtime via the `module` prop.
 
   // Rich props must be set as JS properties, not HTML attributes
   player.module = ReplayBackend;
-  player.url = 'https://example.com/recording.bin';
 
-  // Static form: headers evaluated once
-  player.fetchOptions = { headers: { Authorization: 'Bearer <token>' } };
-
-  // Callback form: invoked fresh on every fetch — use this for token rotation
-  player.fetchOptions = async () => ({
-    headers: { Authorization: `Bearer ${await getToken()}` },
-  });
+  // dataSource is format-agnostic — implement ReplayDataSource for any recording source
+  player.dataSource = myDataSource;
 
   player.addEventListener('ready', (e) => {
     const api = e.detail.playerApi; // PlayerApi
@@ -35,16 +29,36 @@ Decoding is handled by a WASM engine injected at runtime via the `module` prop.
 <iron-replay-player style="width: 100%; height: 100%;"></iron-replay-player>
 ```
 
-> **Important:** `module` and `url` must be set as JS properties on the element instance,
+> **Important:** `module` and `dataSource` must be set as JS properties on the element instance,
 > not as HTML attributes. wasm-bindgen objects cannot be serialised as attribute strings.
 
 ## Props
 
-| Prop           | Type           | Description                                                                                                                                                                                                                 |
-| -------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `url`          | `string`       | URL of the recording file. The server must support HTTP `Range` requests.                                                                                                                                                   |
-| `module`       | `ReplayModule` | WASM backend to use for decoding. See [Module injection](#module-injection).                                                                                                                                                |
-| `fetchOptions` | `FetchOptions` | Optional. Static `RequestInit` or a sync/async callback returning one. Merged into every fetch; `Range` always wins. Use the callback form for token rotation — it is invoked fresh per fetch without reloading the player. |
+| Prop         | Type               | Description                                                                        |
+| ------------ | ------------------ | ---------------------------------------------------------------------------------- |
+| `dataSource` | `ReplayDataSource` | Data source providing recording PDUs.                                              |
+| `module`     | `ReplayModule`     | WASM backend to use for decoding. See [Module injection](#module-injection).       |
+
+## ReplayDataSource
+
+The component is format- and transport-agnostic. Consumers implement this interface to supply data from any source (HTTP server, IndexedDB, in-memory buffer, etc.).
+
+```ts
+interface ReplayDataSource {
+  open(signal?: AbortSignal): Promise<ReplayMetadata>;
+  fetch(fromMs: number, toMs: number, signal: AbortSignal): Promise<ReplayPdu[]>;
+  close(): void;
+}
+```
+
+| Method  | Description                                                                                                              |
+| ------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `open`  | Returns `ReplayMetadata { durationMs, totalPdus, initialWidth?, initialHeight? }`. Called once when playback is started. |
+| `fetch` | Returns `ReplayPdu[]` for the half-open interval `[fromMs, toMs)`, sorted ascending by timestamp.                       |
+| `close` | Fire-and-forget cleanup. Called when the component unmounts or a new data source is loaded.                               |
+
+> **Token rotation / auth:** Since the data source is owned by the consumer, handle token refresh
+> and authentication inside your `ReplayDataSource` implementation — the component never sees credentials.
 
 ## Events
 
@@ -61,16 +75,18 @@ player.addEventListener('ready', (e: CustomEvent) => {
 
 ### `error`
 
-Fired when a fetch operation fails — covers initial load failures (network errors,
-HTTP errors, corrupt recordings), WASM init failures, and mid-playback fetch/seek
-failures. `event.detail` is a `PlayerFetchError`.
+Fired when a data source or WASM operation fails — covers initial load failures,
+WASM init failures, and mid-playback fetch/seek failures.
+`event.detail` is a `PlayerError`.
 
 ```ts
-player.addEventListener('error', (e: CustomEvent<PlayerFetchError>) => {
+player.addEventListener('error', (e: CustomEvent<PlayerError>) => {
   const err = e.detail;
-  console.error(`[${err.phase}] ${err.message}`, err.httpStatus);
+  console.error(`[${err.phase}] ${err.message}`, err.cause);
 });
 ```
+
+`err.cause` contains the original error thrown by the `ReplayDataSource`.
 
 The error is held until the consumer calls `api.clearError()`. A new error will not
 be reported until the previous one is cleared (first-error-wins). The inline error
@@ -80,18 +96,18 @@ message inside the component is independent and clears when a new load starts.
 
 Returned via the `ready` event. All methods are synchronous except `seek`, which is async internally but returns `void`.
 
-| Method           | Signature                        | Description                                                                              |
-| ---------------- | -------------------------------- | ---------------------------------------------------------------------------------------- |
-| `load`           | `(url: string) => void`          | Load a new recording. Resets all playback state.                                         |
-| `togglePlayback` | `() => void`                     | Toggle between play and pause.                                                           |
-| `seek`           | `(positionMs: number) => void`   | Jump to an absolute position in milliseconds.                                            |
-| `setSpeed`       | `(speed: number) => void`        | Set playback speed multiplier (e.g. `1`, `1.5`, `2`, `3`).                               |
-| `getElapsedMs`   | `() => number`                   | Current playhead position in milliseconds.                                               |
-| `getDurationMs`  | `() => number`                   | Total recording duration in milliseconds (`0` if not yet loaded).                        |
-| `isPaused`       | `() => boolean`                  | Whether playback is currently paused.                                                    |
-| `getLoadState`   | `() => LoadState`                | Current load state. Use to check for errors programmatically after the `ready` event.    |
-| `getPlayerError` | `() => PlayerFetchError \| null` | Current fetch error, or `null` if none active.                                           |
-| `clearError`     | `() => void`                     | Reset the active fetch error. Consumer is responsible for retrying the failed operation. |
+| Method           | Signature                                  | Description                                                                              |
+| ---------------- | ------------------------------------------ | ---------------------------------------------------------------------------------------- |
+| `load`           | `(dataSource: ReplayDataSource) => void`   | Load a new recording. Resets all playback state.                                         |
+| `togglePlayback` | `() => void`                               | Toggle between play and pause.                                                           |
+| `seek`           | `(positionMs: number) => void`             | Jump to an absolute position in milliseconds.                                            |
+| `setSpeed`       | `(speed: number) => void`                  | Set playback speed multiplier (e.g. `1`, `1.5`, `2`, `3`).                               |
+| `getElapsedMs`   | `() => number`                             | Current playhead position in milliseconds.                                               |
+| `getDurationMs`  | `() => number`                             | Total recording duration in milliseconds (`0` if not yet loaded).                        |
+| `isPaused`       | `() => boolean`                            | Whether playback is currently paused.                                                    |
+| `getLoadState`   | `() => LoadState`                          | Current load state. Use to check for errors programmatically after the `ready` event.    |
+| `getPlayerError` | `() => PlayerError \| null`                | Current error, or `null` if none active.                                                 |
+| `clearError`     | `() => void`                               | Reset the active error. Consumer is responsible for retrying the failed operation.       |
 
 ## Module injection
 
@@ -108,65 +124,22 @@ import type { ReplayModule } from '@devolutions/iron-replay-player';
 - `Replay` — a class constructable with a `HTMLCanvasElement`, implementing `WasmReplayInstance`
 - `PduSource` — an object with numeric `Client` and `Server` values
 
-## Server requirements
-
-The recording server must respond to HTTP `Range` requests with `206 Partial Content`.
-The component fetches only the header and index table up front, then streams PDU data
-on demand using byte-range requests. A server that returns `200` for range requests will
-cause a parse error.
-
-See [Recording file format](#recording-file-format) below.
-
 ## Exported types
 
 All public TypeScript types are re-exported from the package entry point:
 
 ```ts
-import { FetchHttpError } from '@devolutions/iron-replay-player'; // class — use instanceof for checks
 import type {
   ReplayModule, // interface for the WASM backend
   WasmReplayInstance, // interface for a single Replay engine instance
-  FetchOptions, // RequestInit object or () => RequestInit | Promise<RequestInit>
-  PlayerFetchError, // { message, phase, httpStatus? } — detail of the 'error' event
+  ReplayDataSource, // interface for supplying recording data
+  ReplayMetadata, // { durationMs, totalPdus, initialWidth?, initialHeight? }
+  ReplayPdu, // a single PDU with timestamp, direction, and data
+  PlayerError, // { message, phase, cause? } — detail of the 'error' event
   PlayerApi, // programmatic control handle (from 'ready' event)
   PlaybackState, // { paused, waiting, seeking }
   LoadState, // 'idle' | 'loading' | 'ready' | { status: 'error', message }
-  Header, // recording header fields
-  IndexTableRow, // one row of the PDU index table
 } from '@devolutions/iron-replay-player';
-```
-
-## Auth and token refresh
-
-For long-lived sessions where tokens can expire mid-playback, use the async callback
-form of `fetchOptions` and mutate the captured token variable on `error`.
-
-> **Important:** do NOT reassign `player.fetchOptions` during `playback`/`seek` error
-> handling — that triggers a full reload and loses the playback position. Only mutate
-> the variable captured by the callback closure.
-
-```ts
-let currentToken = await getInitialToken();
-
-// Set the callback ONCE — never reassign for playback/seek retry
-player.fetchOptions = async () => ({
-  headers: { Authorization: `Bearer ${currentToken}` },
-});
-
-player.addEventListener('ready', (e: CustomEvent) => {
-  const api: PlayerApi = e.detail.playerApi;
-
-  player.addEventListener('error', async (e: CustomEvent<PlayerFetchError>) => {
-    const err = e.detail;
-    if (err.httpStatus === 401) {
-      currentToken = await refreshToken(); // mutate closure variable — no reload
-      api.clearError();
-      if (err.phase === 'playback') api.togglePlayback();
-      if (err.phase === 'seek') api.seek(api.getElapsedMs());
-      if (err.phase === 'init') api.load(player.url); // reload is fine at init
-    }
-  });
-});
 ```
 
 ## Development
@@ -233,8 +206,7 @@ are described by its index table entry.
 sequenceDiagram
     participant rAF as requestAnimationFrame
     participant Store as replay-store
-    participant Fetcher as PduFetcher
-    participant Server as Recording Server
+    participant DataSource as DataSource
     participant WASM as WASM Replay
     participant Canvas as Canvas (owned by WASM)
     participant UI as SeekBar / Controls
@@ -262,17 +234,14 @@ sequenceDiagram
         alt Buffer health check
             alt Critically low (< 500ms ahead)
                 Store->>Store: stop rAF, set waiting
-                Store->>Fetcher: fetchUntilTime(elapsed + 15s)
-                Fetcher->>Server: HTTP Range request
-                Server-->>Fetcher: PDU bytes
-                Fetcher->>WASM: pushPdu() for each PDU
-                Fetcher-->>Store: fetch complete
+                Store->>DataSource: fetch(fromMs, toMs, signal)
+                DataSource-->>Store: ReplayPdu[]
+                Store->>WASM: pushPdu() for each returned PDU
                 Store->>Store: clear waiting, resume rAF
             else Low (< 5s ahead)
-                Store-)Fetcher: fetchUntilTime(elapsed + 15s) fire-and-forget
-                Fetcher->>Server: HTTP Range request
-                Server-->>Fetcher: PDU bytes
-                Fetcher->>WASM: pushPdu() for each PDU
+                Store-)DataSource: fetch(fromMs, toMs, signal) fire-and-forget
+                DataSource-->>Store: ReplayPdu[]
+                Store->>WASM: pushPdu() for each returned PDU
             end
         end
         Store->>UI: update elapsed
