@@ -82,8 +82,7 @@ impl Replay {
                 None => break,
             };
 
-            let source = pdu.source();
-            let results = match self.processor.process_pdu(&mut self.image, source, pdu.data_ref()) {
+            let results = match self.processor.process_pdu(&mut self.image, pdu.source, &pdu.data) {
                 Ok(r) => r,
                 Err(e) => {
                     console::error_1(&format!("pdu processing error: {e}").into());

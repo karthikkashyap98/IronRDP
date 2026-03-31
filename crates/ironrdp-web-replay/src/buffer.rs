@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use wasm_bindgen::prelude::*;
 
-/// Direction/source of a PDU in the recording
+/// Direction/source of a PDU in the recording.
 #[wasm_bindgen]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PduSource {
@@ -11,34 +11,11 @@ pub enum PduSource {
     Server = 1,
 }
 
-#[wasm_bindgen]
-pub struct Pdu {
-    source: PduSource,
-    data: Vec<u8>,
-}
-
-#[wasm_bindgen]
-impl Pdu {
-    #[wasm_bindgen(getter)]
-    pub fn source(&self) -> PduSource {
-        self.source
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn data(&self) -> Vec<u8> {
-        self.data.clone()
-    }
-
-    /// Internal accessor for Rust callers - avoids clone
-    pub(crate) fn data_ref(&self) -> &[u8] {
-        &self.data
-    }
-}
-
-struct PduEntry {
-    timestamp_ms: f64,
-    source: PduSource,
-    data: Vec<u8>,
+/// A single timestamped PDU stored in [`PduBuffer`].
+pub(crate) struct PduEntry {
+    pub(crate) timestamp_ms: f64,
+    pub(crate) source: PduSource,
+    pub(crate) data: Vec<u8>,
 }
 
 #[wasm_bindgen]
@@ -61,6 +38,7 @@ impl PduBuffer {
         }
     }
 
+    /// Append a PDU to the back of the buffer.
     #[wasm_bindgen]
     pub fn push_pdu(&mut self, timestamp_ms: f64, source: PduSource, data: &[u8]) {
         self.entries.push_back(PduEntry {
@@ -69,30 +47,38 @@ impl PduBuffer {
             data: data.to_vec(),
         });
     }
+}
 
+impl PduBuffer {
+    /// Returns the timestamp of the next (front) PDU, or `NAN` if empty.
+    ///
+    /// `NAN` comparisons are always false, so callers using `<= target_ms`
+    /// naturally stop when the buffer is empty.
     pub fn peek_timestamp(&self) -> f64 {
         self.entries.front().map_or(f64::NAN, |e| e.timestamp_ms)
     }
 
+    /// Returns the timestamp of the last (back) PDU, or `NAN` if empty.
     pub fn peek_last_timestamp(&self) -> f64 {
         self.entries.back().map_or(f64::NAN, |e| e.timestamp_ms)
     }
 
-    pub fn pop_pdu(&mut self) -> Option<Pdu> {
-        self.entries.pop_front().map(|e| Pdu {
-            source: e.source,
-            data: e.data,
-        })
+    /// Removes and returns the front PDU, or `None` if empty.
+    pub(crate) fn pop_pdu(&mut self) -> Option<PduEntry> {
+        self.entries.pop_front()
     }
 
+    /// Returns the source direction of the next PDU without consuming it.
     pub fn peek_source(&self) -> Option<PduSource> {
         self.entries.front().map(|e| e.source)
     }
 
+    /// Returns the number of PDUs currently in the buffer.
     pub fn count(&self) -> usize {
         self.entries.len()
     }
 
+    /// Discards all buffered PDUs.
     pub fn clear(&mut self) {
         self.entries.clear();
     }

@@ -227,3 +227,55 @@ byte-range fetching without scanning the full file.
 
 Raw binary PDU data, concatenated in index order. Each PDU's position and length
 are described by its index table entry.
+
+## Sequence Diagram
+```mermaid
+sequenceDiagram
+    participant rAF as requestAnimationFrame
+    participant Store as replay-store
+    participant Fetcher as PduFetcher
+    participant Server as Recording Server
+    participant WASM as WASM Replay
+    participant Canvas as Canvas (owned by WASM)
+    participant UI as SeekBar / Controls
+    loop Every Frame (~16ms)
+        rAF->>Store: tick(timestamp)
+        Store->>Store: elapsed += delta × speed
+        Store->>WASM: renderTill(elapsed)
+        loop Each buffered PDU until elapsed
+            WASM->>WASM: pop from PduBuffer
+            WASM->>WASM: ReplayProcessor.process_pdu()
+            alt Server FastPath update
+                WASM->>WASM: decode graphics → DecodedImage
+            else Client FastPath input
+                WASM->>WASM: extract mouse position
+            else X224 control
+                WASM->>WASM: detect resize / session end
+            end
+        end
+        WASM->>Canvas: putImageData(framebuffer)
+        WASM->>Canvas: drawImage(cached cursor OffscreenCanvas)
+        WASM-->>Store: RenderResult { elapsed, session_ended, resolution_changed }
+        alt session ended or elapsed ≥ duration
+            Store->>Store: pause playback
+        end
+        alt Buffer health check
+            alt Critically low (< 500ms ahead)
+                Store->>Store: stop rAF, set waiting
+                Store->>Fetcher: fetchUntilTime(elapsed + 15s)
+                Fetcher->>Server: HTTP Range request
+                Server-->>Fetcher: PDU bytes
+                Fetcher->>WASM: pushPdu() for each PDU
+                Fetcher-->>Store: fetch complete
+                Store->>Store: clear waiting, resume rAF
+            else Low (< 5s ahead)
+                Store-)Fetcher: fetchUntilTime(elapsed + 15s) fire-and-forget
+                Fetcher->>Server: HTTP Range request
+                Server-->>Fetcher: PDU bytes
+                Fetcher->>WASM: pushPdu() for each PDU
+            end
+        end
+        Store->>UI: update elapsed
+        Store->>rAF: requestAnimationFrame(tick)
+    end
+```
