@@ -71,11 +71,6 @@ export interface IndexTableRow {
     direction: number; // 0 = Client, 1 = Server
 }
 
-export interface PDUEntry {
-    data: ArrayBuffer;
-    timeOffset: milliseconds;
-}
-
 const HEADER_SIZE = 20;
 const INDEX_ROW_SIZE = 17;
 

@@ -93,6 +93,8 @@
         // Store method names: seek() not seekTo(), togglePlayback() not togglePlay().
         const playerApi: PlayerApi = {
             load: (newUrl: string) => store.initialiseRecording(newUrl, fetchOptions),
+            play: () => store.play(),
+            pause: () => store.pause(),
             togglePlayback: () => store.togglePlayback(),
             seek: (positionMs: number) => store.seek(positionMs),
             setSpeed: (s: number) => store.setSpeed(s),
@@ -172,7 +174,8 @@
                 <span class="buffering-label">Buffering...</span>
             </div>
         {/if}
-        <canvas bind:this={canvas}></canvas>
+        <!-- svelte-ignore a11y_no_interactive_element_to_noninteractive_role -->
+        <canvas bind:this={canvas} role="img" aria-label="RDP session replay"></canvas>
 
         {#if store.loadState.status === 'ready' && wasmReady}
             <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
@@ -285,6 +288,8 @@
     :global(.controls-overlay.hidden) {
         opacity: 0;
         pointer-events: none;
+        visibility: hidden;
+        transition: opacity 0.3s ease, visibility 0s linear 0.3s;
     }
 
     /* Seekbar */

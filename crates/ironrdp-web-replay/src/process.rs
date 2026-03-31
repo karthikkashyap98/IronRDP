@@ -33,23 +33,31 @@ pub enum PointerState {
 #[derive(Debug)]
 pub enum ProcessError {
     /// PDU parsing/decoding failed
-    Decode(String),
+    Decode(Box<dyn core::error::Error + Send + Sync + 'static>),
     /// Graphics operation failed
-    Graphics(String),
+    Graphics(Box<dyn core::error::Error + Send + Sync + 'static>),
     IncompletePdu,
 }
 
 impl core::fmt::Display for ProcessError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            ProcessError::Decode(msg) => write!(f, "decode error: {msg}"),
-            ProcessError::Graphics(msg) => write!(f, "graphics error: {msg}"),
+            ProcessError::Decode(e) => write!(f, "decode error: {e}"),
+            ProcessError::Graphics(e) => write!(f, "graphics error: {e}"),
             ProcessError::IncompletePdu => write!(f, "incomplete PDU"),
         }
     }
 }
 
-impl core::error::Error for ProcessError {}
+impl core::error::Error for ProcessError {
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+        match self {
+            ProcessError::Decode(e) => Some(e.as_ref()),
+            ProcessError::Graphics(e) => Some(e.as_ref()),
+            ProcessError::IncompletePdu => None,
+        }
+    }
+}
 
 /// Outcome of processing a single PDU
 #[derive(Debug)]
@@ -146,7 +154,7 @@ impl ReplayProcessor {
         let updates = self
             .fast_path_processor
             .process(image, pdu, &mut response_buffer)
-            .map_err(|e| ProcessError::Decode(format!("{e}")))?;
+            .map_err(|e| ProcessError::Decode(Box::new(e)))?;
 
         let mut results = Vec::new();
         for update in updates {
@@ -189,7 +197,7 @@ impl ReplayProcessor {
             return Ok(Vec::new());
         }
 
-        let input = decode::<FastPathInput>(pdu).map_err(|e| ProcessError::Decode(format!("{e}")))?;
+        let input = decode::<FastPathInput>(pdu).map_err(|e| ProcessError::Decode(Box::new(e)))?;
 
         let mut results = Vec::new();
         for event in input.input_events() {
@@ -206,7 +214,7 @@ impl ReplayProcessor {
                         y: mouse.y_position,
                     });
                 }
-                _ => {} //TODO: Handle Keyboard events, ignored for now
+                _ => {} // TODO: Handle keyboard events, ignored for now.
             }
         }
 
@@ -215,7 +223,7 @@ impl ReplayProcessor {
 
     /// Process an X224 PDU (session control, resolution changes)
     fn process_x224(pdu: &[u8]) -> Result<Vec<ProcessResult>, ProcessError> {
-        let x224 = decode::<X224<McsMessage<'_>>>(pdu).map_err(|e| ProcessError::Decode(format!("{e}")))?;
+        let x224 = decode::<X224<McsMessage<'_>>>(pdu).map_err(|e| ProcessError::Decode(Box::new(e)))?;
 
         let result = match x224.0 {
             McsMessage::SendDataIndication(sdi) => {

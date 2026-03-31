@@ -6,6 +6,7 @@ export interface RenderResult {
     current_time_ms: number;
     pdus_processed: number;
     resolution_changed: boolean;
+    session_ended: boolean;
 }
 
 /**

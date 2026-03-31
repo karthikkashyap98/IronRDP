@@ -51,8 +51,8 @@ export function createReplayStore() {
     }
 
     function clearError(): void {
-        if (playerError !== null && playerError.phase !== 'init') {
-            loadState = { status: 'ready' };
+        if (playerError !== null) {
+            loadState = playerError.phase === 'init' ? { status: 'idle' } : { status: 'ready' };
         }
         playerError = null;
     }
@@ -249,6 +249,7 @@ export function createReplayStore() {
 
     // --- Speed: set playback speed ---
     function setSpeed(value: number): void {
+        if (!Number.isFinite(value) || value <= 0) return;
         speed = value;
     }
 
@@ -264,7 +265,22 @@ export function createReplayStore() {
         elapsed = Math.min(elapsed + delta * speed, duration);
 
         // Render PDUs up to elapsed
-        wasmReplay.renderTill(elapsed);
+        let renderResult;
+        try {
+            renderResult = wasmReplay.renderTill(elapsed);
+        } catch (e) {
+            rafId = null;
+            playbackState = { ...playbackState, paused: true };
+            setPlayerError('playback', e);
+            return;
+        }
+
+        // Check if the session ended via a SessionEnded PDU (e.g. truncated recording)
+        if (renderResult.session_ended) {
+            rafId = null;
+            playbackState = { ...playbackState, paused: true };
+            return;
+        }
 
         // Check if playback has reached the end
         if (elapsed >= duration) {
@@ -314,7 +330,7 @@ export function createReplayStore() {
             // Buffer getting low — prefetch more, update fetchedUntilMs when done
             fetcher.fetchUntilTime(elapsed + BUFFER_TARGET_MS).then(() => {
                 fetchedUntilMs = fetcher!.nextUnfetchedTimestamp;
-            });
+            }).catch((e: unknown) => setPlayerError('playback', e));
         }
 
         // Schedule next tick
@@ -372,5 +388,8 @@ export function createReplayStore() {
         }
         seekAbort?.abort();
         seekAbort = null;
+        playbackState = { paused: true, waiting: false, seeking: false };
+        wasmReplay = null;
+        fetcher = null;
     }
 }

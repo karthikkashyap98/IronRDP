@@ -23,6 +23,8 @@ pub struct RenderResult {
     pub pdus_processed: u32,
     /// Whether the desktop resolution changed during this render
     pub resolution_changed: bool,
+    /// Whether a SessionEnded PDU was encountered — caller should stop the playback loop
+    pub session_ended: bool,
 }
 
 #[wasm_bindgen]
@@ -72,6 +74,7 @@ impl Replay {
     pub fn render_till(&mut self, target_ms: f64) -> RenderResult {
         let mut pdus_processed: u32 = 0;
         let mut resolution_changed = false;
+        let mut session_ended = false;
 
         while self.pdu_buffer.peek_timestamp() <= target_ms {
             let pdu = match self.pdu_buffer.pop_pdu() {
@@ -127,6 +130,9 @@ impl Replay {
                         self.mouse_y = y;
                         frame_dirty = true;
                     }
+                    ProcessResult::SessionEnded => {
+                        session_ended = true;
+                    }
                     _ => {}
                 }
             }
@@ -144,6 +150,7 @@ impl Replay {
             current_time_ms: self.current_time_ms,
             pdus_processed,
             resolution_changed,
+            session_ended,
         }
     }
 
@@ -161,7 +168,7 @@ impl Replay {
     /// not displaying the canvas between reset() and the first render_till() call.
     pub fn reset(&mut self) {
         self.current_time_ms = 0.0;
-        self.pdu_buffer = PduBuffer::new();
+        self.pdu_buffer.clear();
         self.image = DecodedImage::new(PixelFormat::RgbA32, DEFAULT_WIDTH, DEFAULT_HEIGHT);
         self.processor = ReplayProcessor::new();
         self.pointer_hidden = false;

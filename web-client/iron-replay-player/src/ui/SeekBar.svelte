@@ -24,39 +24,46 @@
 		return pct * duration;
 	}
 
-	function onmousedown(e: MouseEvent): void {
+	function onpointerdown(e: PointerEvent): void {
 		if (duration === 0) return;
 		dragging = true;
 		dragElapsed = msFromPointer(e.clientX);
+		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
 	}
 
 	// Attach window listeners only while dragging — cleaned up automatically when drag ends
 	$effect(() => {
 		if (!dragging) return;
 
-		function onmousemove(e: MouseEvent): void {
+		function onpointermove(e: PointerEvent): void {
 			dragElapsed = msFromPointer(e.clientX);
 		}
 
-		function onmouseup(e: MouseEvent): void {
+		function onpointerup(e: PointerEvent): void {
 			dragging = false;
 			onseekend(msFromPointer(e.clientX));
 		}
 
-		window.addEventListener('mousemove', onmousemove);
-		window.addEventListener('mouseup', onmouseup);
+		window.addEventListener('pointermove', onpointermove);
+		window.addEventListener('pointerup', onpointerup);
 		return () => {
-			window.removeEventListener('mousemove', onmousemove);
-			window.removeEventListener('mouseup', onmouseup);
+			window.removeEventListener('pointermove', onpointermove);
+			window.removeEventListener('pointerup', onpointerup);
 		};
 	});
 </script>
 
-<!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
 	class="seekbar"
 	class:interactive={duration > 0}
-	onmousedown={onmousedown}
+	role="slider"
+	tabindex={duration > 0 ? 0 : -1}
+	aria-label="Seek"
+	aria-valuemin={0}
+	aria-valuemax={duration}
+	aria-valuenow={Math.round(displayElapsed)}
+	style="touch-action: none"
+	onpointerdown={onpointerdown}
 >
 	<div
 		class="seekbar-track"

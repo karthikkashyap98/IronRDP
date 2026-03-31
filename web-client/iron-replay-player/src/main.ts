@@ -10,4 +10,4 @@ export type { PlayerFetchError } from './interfaces/PlayerFetchError.js';
 
 // Recording fetch utilities (for consumers who want to prefetch metadata)
 export { fetchHeader, fetchIndexTable, FetchHttpError } from './services/fetchRecording.js';
-export type { Header, IndexTableRow, PDUEntry, FetchOptions } from './services/fetchRecording.js';
+export type { Header, IndexTableRow, FetchOptions } from './services/fetchRecording.js';
