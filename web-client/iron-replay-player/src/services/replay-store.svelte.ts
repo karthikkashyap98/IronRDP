@@ -1,9 +1,6 @@
-import { fetchHeader, fetchIndexTable, FetchHttpError } from './fetchRecording.js';
-import type { FetchOptions, Header, IndexTableRow } from './fetchRecording.js';
-import type { PlayerFetchError } from '../interfaces/PlayerFetchError.js';
+import type { ReplayDataSource, PlayerError } from '../interfaces/ReplayDataSource.js';
 import type { LoadState } from '../interfaces/LoadState.js';
 import type { PlaybackState } from '../interfaces/PlaybackState.js';
-import { PduFetcher } from './PduFetcher.js';
 import type { WasmReplayInstance } from '../interfaces/ReplayModule.js';
 
 interface BufferConfig {
@@ -25,9 +22,12 @@ export function createReplayStore() {
 
     // --- Load state ---
     let loadState = $state<LoadState>({ status: 'idle' });
-    let playerError = $state<PlayerFetchError | null>(null);
-    let header = $state<Header | null>(null);
-    let indexTable = $state<IndexTableRow[] | null>(null);
+    let playerError = $state<PlayerError | null>(null);
+
+    // --- Data source state ---
+    let dataSource: ReplayDataSource | null = null;
+    let duration = $state(0);
+    let totalPdus = $state(0);
 
     // --- Playback state ---
     let playbackState = $state<PlaybackState>({ paused: true, waiting: false, seeking: false });
@@ -38,12 +38,11 @@ export function createReplayStore() {
     // --- Internal refs ---
     let rafId: number | null = null;
     let lastTimestamp: DOMHighResTimeStamp | null = null;
-    let fetcher: PduFetcher | null = $state(null);
     let wasmReplay: WasmReplayInstance | null = $state(null);
-    let fetchOptions: FetchOptions | undefined = undefined;
 
-    // --- Seek state ---
+    // --- Seek & prefetch abort ---
     let seekAbort: AbortController | null = null;
+    let prefetchAbort = new AbortController();
 
     function yieldToEventLoop(): Promise<void> {
         return new Promise((resolve) => setTimeout(resolve, 0));
@@ -52,12 +51,12 @@ export function createReplayStore() {
     // --- Player error helpers ---
     // First-error-wins: once an error is set, subsequent errors are silently
     // discarded until the consumer calls clearError().
-    function setPlayerError(phase: PlayerFetchError['phase'], e: unknown): void {
+    function setPlayerError(phase: PlayerError['phase'], error: unknown): void {
         if (playerError !== null) return;
         playerError = {
+            message: error instanceof Error ? error.message : String(error),
             phase,
-            message: e instanceof Error ? e.message : 'Unknown error',
-            httpStatus: e instanceof FetchHttpError ? e.httpStatus : undefined,
+            cause: error,
         };
     }
 
@@ -68,28 +67,44 @@ export function createReplayStore() {
         playerError = null;
     }
 
+    // --- Fetch helper: single path for all fetch→push→advance operations ---
+    async function fetchAndPush(
+        fromMs: number,
+        toMs: number,
+        signal: AbortSignal,
+    ): Promise<void> {
+        if (!dataSource || !wasmReplay) return;
+
+        const pdus = await dataSource.fetch(fromMs, toMs, signal);
+
+        if (signal.aborted) return;
+
+        for (const pdu of pdus) {
+            wasmReplay.pushPdu(pdu.timestampMs, pdu.source, pdu.data);
+        }
+
+        fetchedUntilMs = pdus.length > 0
+            ? pdus[pdus.length - 1].timestampMs
+            : toMs;
+    }
+
     // --- Load recording metadata ---
-    async function initialiseRecording(url: string, options?: FetchOptions): Promise<void> {
-        fetchOptions = options;
+    async function initialiseRecording(source: ReplayDataSource): Promise<void> {
+        dataSource = source;
         loadState = { status: 'loading' };
-        header = null;
-        indexTable = null;
+        duration = 0;
+        totalPdus = 0;
+        fetchedUntilMs = 0;
 
         try {
-            header = await fetchHeader(url, fetchOptions);
-            indexTable = await fetchIndexTable(url, header.totalPdus, fetchOptions);
-
-            // Some recordings store duration = 0 in the header.
-            // Fall back to the timeOffset of the last index table entry.
-            if (header.duration === 0 && indexTable.length > 0) {
-                header = { ...header, duration: indexTable[indexTable.length - 1].timeOffset };
-            }
-
+            const metadata = await dataSource.open();
+            duration = metadata.durationMs;
+            totalPdus = metadata.totalPdus;
             loadState = { status: 'ready' };
-        } catch (e) {
+        } catch (e: unknown) {
             loadState = {
                 status: 'error',
-                message: e instanceof Error ? e.message : 'Unknown error',
+                message: e instanceof Error ? e.message : 'failed to open data source',
             };
             setPlayerError('init', e);
         }
@@ -102,17 +117,14 @@ export function createReplayStore() {
     }
 
     // --- Wire in WASM replay instance (called from component after WASM loads) ---
-    function setWasmReplay(replay: WasmReplayInstance, url: string): void {
-        if (!indexTable) return;
+    function setWasmReplay(replay: WasmReplayInstance): void {
         wasmReplay = replay;
-        fetcher = new PduFetcher(url, indexTable, wasmReplay, fetchOptions);
     }
 
     // --- Seek ---
     async function seek(targetMs: number): Promise<void> {
-        if (!fetcher || !wasmReplay) return;
+        if (!dataSource || !wasmReplay) return;
 
-        const duration = header?.duration ?? 0;
         targetMs = Math.max(0, Math.min(targetMs, duration));
 
         // Cancel any in-flight seek
@@ -120,6 +132,10 @@ export function createReplayStore() {
         const controller = new AbortController();
         seekAbort = controller;
         const { signal } = controller;
+
+        // Cancel any in-flight prefetch
+        prefetchAbort.abort();
+        prefetchAbort = new AbortController();
 
         // Stop rAF if running
         if (rafId !== null) {
@@ -132,9 +148,9 @@ export function createReplayStore() {
         // Direction decision: compare targetMs against current elapsed
         let processFrom = elapsed;
         if (targetMs < elapsed) {
-            // Backward seek — reset WASM and fetcher, restart from 0
+            // Backward seek — reset WASM, restart from 0
+            // DataSource is stateless — no reset needed.
             wasmReplay.reset();
-            fetcher.reset();
             processFrom = 0;
             fetchedUntilMs = 0;
         }
@@ -153,11 +169,8 @@ export function createReplayStore() {
 
                 const chunkEnd = Math.min(current + bufferConfig.seekChunkMs, targetMs);
 
-                await fetcher.fetchUntilTime(chunkEnd);
+                await fetchAndPush(current, chunkEnd, signal);
                 if (signal.aborted) return;
-
-                // Update buffer indicator per chunk
-                fetchedUntilMs = fetcher.nextUnfetchedTimestamp;
 
                 // Fast-forward WASM through this chunk — no canvas blit
                 wasmReplay.renderTill(chunkEnd);
@@ -172,7 +185,6 @@ export function createReplayStore() {
             // forceRedraw() unconditionally blits the in-memory framebuffer to the canvas.
             wasmReplay.setUpdateCanvas(true);
             wasmReplay.forceRedraw();
-            fetchedUntilMs = fetcher.nextUnfetchedTimestamp;
         } catch (e) {
             if (signal.aborted) return; // superseded — discard error silently
             loadState = {
@@ -202,13 +214,12 @@ export function createReplayStore() {
 
     // --- Play: record intent, fill buffer, then start rAF loop ---
     async function play(): Promise<void> {
-        if (!fetcher || !wasmReplay) return;
+        if (!dataSource || !wasmReplay) return;
 
         playbackState = { ...playbackState, paused: false, waiting: true };
 
         try {
-            await fetcher.fetchUntilTime(elapsed + bufferConfig.targetMs);
-            fetchedUntilMs = fetcher.nextUnfetchedTimestamp;
+            await fetchAndPush(fetchedUntilMs, fetchedUntilMs + bufferConfig.targetMs, prefetchAbort.signal);
         } catch (e) {
             loadState = {
                 status: 'error',
@@ -240,7 +251,7 @@ export function createReplayStore() {
 
     // --- Guard: can the player accept playback commands? ---
     function canControlPlayback(): boolean {
-        return wasmReplay !== null && fetcher !== null && !playbackState.seeking;
+        return wasmReplay !== null && dataSource !== null && !playbackState.seeking;
     }
 
     // --- Toggle: single entry point for play/pause from canvas click ---
@@ -266,9 +277,7 @@ export function createReplayStore() {
 
     // --- rAF tick callback ---
     function tick(now: DOMHighResTimeStamp): void {
-        if (!fetcher || !wasmReplay || lastTimestamp === null) return;
-
-        const duration = header?.duration ?? 0;
+        if (!dataSource || !wasmReplay || lastTimestamp === null) return;
 
         // Advance elapsed time
         const delta = now - lastTimestamp;
@@ -304,7 +313,7 @@ export function createReplayStore() {
         }
 
         // Buffer health check
-        const bufferAhead = fetcher.nextUnfetchedTimestamp - elapsed;
+        const bufferAhead = fetchedUntilMs - elapsed;
 
         if (bufferAhead <= bufferConfig.criticallyLowMs) {
             // Buffer empty — freeze playback, fetch more, resume when ready
@@ -314,34 +323,25 @@ export function createReplayStore() {
             }
             playbackState = { ...playbackState, waiting: true };
 
-            fetcher
-                .fetchUntilTime(elapsed + bufferConfig.targetMs)
-                .then(() => {
-                    fetchedUntilMs = fetcher!.nextUnfetchedTimestamp;
-                    if (!playbackState.paused && !playbackState.seeking) {
-                        playbackState = { ...playbackState, waiting: false };
-                        lastTimestamp = performance.now();
-                        rafId = requestAnimationFrame(tick);
-                    } else if (!playbackState.seeking) {
-                        playbackState = { ...playbackState, waiting: false };
-                    }
-                })
-                .catch((e: unknown) => {
-                    loadState = {
-                        status: 'error',
-                        message: e instanceof Error ? e.message : 'Failed to fetch PDUs',
-                    };
-                    playbackState = { ...playbackState, waiting: false, paused: true };
-                    setPlayerError('playback', e);
-                });
+            (async () => {
+                try {
+                    await fetchAndPush(fetchedUntilMs, fetchedUntilMs + bufferConfig.targetMs, prefetchAbort.signal);
+                } catch { /* ignore fetch errors during buffer refill */ }
+
+                if (!playbackState.paused && !playbackState.seeking) {
+                    playbackState = { ...playbackState, waiting: false };
+                    lastTimestamp = performance.now();
+                    rafId = requestAnimationFrame(tick);
+                } else if (!playbackState.seeking) {
+                    playbackState = { ...playbackState, waiting: false };
+                }
+            })();
             return;
         }
 
         if (bufferAhead < bufferConfig.lowThresholdMs) {
-            // Buffer getting low — prefetch more, update fetchedUntilMs when done
-            fetcher.fetchUntilTime(elapsed + bufferConfig.targetMs).then(() => {
-                fetchedUntilMs = fetcher!.nextUnfetchedTimestamp;
-            }).catch((e: unknown) => setPlayerError('playback', e));
+            // Buffer getting low — prefetch more (fire-and-forget)
+            fetchAndPush(fetchedUntilMs, fetchedUntilMs + bufferConfig.targetMs, prefetchAbort.signal);
         }
 
         // Schedule next tick
@@ -356,11 +356,11 @@ export function createReplayStore() {
         get playerError() {
             return playerError;
         },
-        get header() {
-            return header;
+        get duration() {
+            return duration;
         },
-        get indexTable() {
-            return indexTable;
+        get totalPdus() {
+            return totalPdus;
         },
         initialiseRecording,
         setLoadError,
@@ -399,8 +399,12 @@ export function createReplayStore() {
         }
         seekAbort?.abort();
         seekAbort = null;
+        prefetchAbort.abort();
         playbackState = { paused: true, waiting: false, seeking: false };
         wasmReplay = null;
-        fetcher = null;
+        if (dataSource) {
+            try { dataSource.close(); } catch { /* fire-and-forget */ }
+        }
+        dataSource = null;
     }
 }
