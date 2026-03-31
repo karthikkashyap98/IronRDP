@@ -13,9 +13,9 @@ export interface RenderResult {
  * Minimal interface for a single WASM replay engine instance.
  *
  * pushPdu `source` note: The Rust signature takes `PduSource` enum (Client=0, Server=1).
- * Typed as `number` here because PduFetcher uses numeric literals (0/1) and cannot
- * easily access `module.PduSource` without additional threading. The numeric values
- * are compatible at runtime since wasm-bindgen enums are number-backed.
+ * Typed as `number` here because ReplayDataSource uses numeric literals (0/1) and
+ * cannot easily access `module.PduSource` without additional threading. The numeric
+ * values are compatible at runtime since wasm-bindgen enums are number-backed.
  */
 export interface WasmReplayInstance {
     free(): void;
