@@ -1,10 +1,10 @@
 import type { LoadState } from './LoadState.js';
-import type { PlayerFetchError } from './PlayerFetchError.js';
+import type { PlayerError, ReplayDataSource } from './ReplayDataSource.js';
 
 /** Public API object dispatched via the 'ready' CustomEvent on <iron-replay-player>. */
 export interface PlayerApi {
-    /** Load a new recording URL. Resets all playback state. */
-    load(url: string): Promise<void>;
+    /** Load a new recording from a data source. Resets all playback state. */
+    load(dataSource: ReplayDataSource): Promise<void>;
     /** Start playback. No-op if already playing. */
     play(): void;
     /** Pause playback. No-op if already paused. */
@@ -24,7 +24,7 @@ export interface PlayerApi {
     /** Current load state — use to check for errors after the player is ready. */
     getLoadState(): LoadState;
     /** Current fetch error, if any. Null when no error is active or after clearError(). */
-    getPlayerError(): PlayerFetchError | null;
+    getPlayerError(): PlayerError | null;
     /** Reset the active fetch error. Consumer is responsible for retrying the failed operation. */
     clearError(): void;
     /** Seek to position 0, preserving play/pause state. */

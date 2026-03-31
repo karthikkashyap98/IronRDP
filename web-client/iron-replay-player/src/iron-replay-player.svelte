@@ -9,18 +9,16 @@
     import { createReplayStore } from './services/replay-store.svelte.js';
     import type { ReplayModule, WasmReplayInstance } from './interfaces/ReplayModule.js';
     import type { PlayerApi } from './interfaces/PlayerApi.js';
-    import type { FetchOptions } from './services/fetchRecording.js';
+    import type { ReplayDataSource } from './interfaces/ReplayDataSource.js';
     import SeekBar from './ui/SeekBar.svelte';
     import PlaybackControls from './ui/PlaybackControls.svelte';
 
     let {
-        url,
+        dataSource,
         module,
-        fetchOptions,
     }: {
-        url: string;
+        dataSource: ReplayDataSource;
         module: ReplayModule;
-        fetchOptions?: FetchOptions;
     } = $props();
 
     const store = createReplayStore();
@@ -57,7 +55,7 @@
     }
 
     $effect(() => {
-        if (url) store.initialiseRecording(url, fetchOptions);
+        if (dataSource) store.initialiseRecording(dataSource);
     });
 
     // Reset wasmReady when a new load starts so WASM re-initializes for the new recording.
@@ -86,20 +84,20 @@
         }
 
         currentReplay = replay;
-        store.setWasmReplay(replay, url);
+        store.setWasmReplay(replay);
         wasmReady = true;
 
         // Build the PlayerApi and dispatch 'ready'.
         // Store method names: seek() not seekTo(), togglePlayback() not togglePlay().
         const playerApi: PlayerApi = {
-            load: (newUrl: string) => store.initialiseRecording(newUrl, fetchOptions),
+            load: (newDataSource: ReplayDataSource) => store.initialiseRecording(newDataSource),
             play: () => store.play(),
             pause: () => store.pause(),
             togglePlayback: () => store.togglePlayback(),
             seek: (positionMs: number) => store.seek(positionMs),
             setSpeed: (s: number) => store.setSpeed(s),
             getElapsedMs: () => store.elapsed,
-            getDurationMs: () => store.header?.duration ?? 0,
+            getDurationMs: () => store.duration,
             isPaused: () => store.playbackState.paused,
             getLoadState: () => store.loadState,
             getPlayerError: () => store.playerError,
@@ -182,7 +180,7 @@
             <div class="controls-overlay" class:hidden={!controlsVisible} onclick={(e) => e.stopPropagation()}>
                 <SeekBar
                     elapsed={store.elapsed}
-                    duration={store.header?.duration ?? 0}
+                    duration={store.duration}
                     fetchedUntilMs={store.fetchedUntilMs}
                     waiting={store.playbackState.waiting}
                     onseekend={(ms) => store.seek(ms)}
@@ -192,7 +190,7 @@
                     waiting={store.playbackState.waiting}
                     canPlay={canPlay}
                     elapsed={store.elapsed}
-                    duration={store.header?.duration ?? 0}
+                    duration={store.duration}
                     speed={store.speed}
                     isFullscreen={isFullscreen}
                     onplay={() => store.play()}
