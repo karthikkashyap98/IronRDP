@@ -6,8 +6,4 @@ export type { ReplayModule, WasmReplayInstance, RenderResult } from './interface
 export type { PlayerApi } from './interfaces/PlayerApi.js';
 export type { PlaybackState } from './interfaces/PlaybackState.js';
 export type { LoadState } from './interfaces/LoadState.js';
-export type { PlayerFetchError } from './interfaces/PlayerFetchError.js';
-
-// Recording fetch utilities (for consumers who want to prefetch metadata)
-export { fetchHeader, fetchIndexTable, FetchHttpError } from './services/fetchRecording.js';
-export type { Header, IndexTableRow, FetchOptions } from './services/fetchRecording.js';
+export type { ReplayDataSource, ReplayMetadata, ReplayPdu, PlayerError } from './interfaces/ReplayDataSource.js';
