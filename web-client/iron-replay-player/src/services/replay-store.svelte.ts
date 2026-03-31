@@ -6,11 +6,23 @@ import type { PlaybackState } from '../interfaces/PlaybackState.js';
 import { PduFetcher } from './PduFetcher.js';
 import type { WasmReplayInstance } from '../interfaces/ReplayModule.js';
 
-const BUFFER_TARGET_MS = 15_000; // target: keep 15s buffered ahead
-const BUFFER_LOW_THRESHOLD_MS = 5_000; // trigger prefetch when < 5s ahead
-const BUFFER_CRITICALLY_LOW_MS = 500; // trigger buffering state and load
+interface BufferConfig {
+    targetMs: number;
+    lowThresholdMs: number;
+    criticallyLowMs: number;
+    seekChunkMs: number;
+}
+
+const DEFAULT_BUFFER_CONFIG: BufferConfig = {
+    targetMs: 15_000,
+    lowThresholdMs: 5_000,
+    criticallyLowMs: 500,
+    seekChunkMs: 5_000,
+};
 
 export function createReplayStore() {
+    const bufferConfig = DEFAULT_BUFFER_CONFIG;
+
     // --- Load state ---
     let loadState = $state<LoadState>({ status: 'idle' });
     let playerError = $state<PlayerFetchError | null>(null);
@@ -31,7 +43,6 @@ export function createReplayStore() {
     let fetchOptions: FetchOptions | undefined = undefined;
 
     // --- Seek state ---
-    const SEEK_CHUNK_MS = 5_000;
     let seekAbort: AbortController | null = null;
 
     function yieldToEventLoop(): Promise<void> {
@@ -140,7 +151,7 @@ export function createReplayStore() {
             while (current < targetMs) {
                 if (signal.aborted) return;
 
-                const chunkEnd = Math.min(current + SEEK_CHUNK_MS, targetMs);
+                const chunkEnd = Math.min(current + bufferConfig.seekChunkMs, targetMs);
 
                 await fetcher.fetchUntilTime(chunkEnd);
                 if (signal.aborted) return;
@@ -196,7 +207,7 @@ export function createReplayStore() {
         playbackState = { ...playbackState, paused: false, waiting: true };
 
         try {
-            await fetcher.fetchUntilTime(elapsed + BUFFER_TARGET_MS);
+            await fetcher.fetchUntilTime(elapsed + bufferConfig.targetMs);
             fetchedUntilMs = fetcher.nextUnfetchedTimestamp;
         } catch (e) {
             loadState = {
@@ -295,7 +306,7 @@ export function createReplayStore() {
         // Buffer health check
         const bufferAhead = fetcher.nextUnfetchedTimestamp - elapsed;
 
-        if (bufferAhead <= BUFFER_CRITICALLY_LOW_MS) {
+        if (bufferAhead <= bufferConfig.criticallyLowMs) {
             // Buffer empty — freeze playback, fetch more, resume when ready
             if (rafId !== null) {
                 cancelAnimationFrame(rafId);
@@ -304,7 +315,7 @@ export function createReplayStore() {
             playbackState = { ...playbackState, waiting: true };
 
             fetcher
-                .fetchUntilTime(elapsed + BUFFER_TARGET_MS)
+                .fetchUntilTime(elapsed + bufferConfig.targetMs)
                 .then(() => {
                     fetchedUntilMs = fetcher!.nextUnfetchedTimestamp;
                     if (!playbackState.paused && !playbackState.seeking) {
@@ -326,9 +337,9 @@ export function createReplayStore() {
             return;
         }
 
-        if (bufferAhead < BUFFER_LOW_THRESHOLD_MS) {
+        if (bufferAhead < bufferConfig.lowThresholdMs) {
             // Buffer getting low — prefetch more, update fetchedUntilMs when done
-            fetcher.fetchUntilTime(elapsed + BUFFER_TARGET_MS).then(() => {
+            fetcher.fetchUntilTime(elapsed + bufferConfig.targetMs).then(() => {
                 fetchedUntilMs = fetcher!.nextUnfetchedTimestamp;
             }).catch((e: unknown) => setPlayerError('playback', e));
         }
