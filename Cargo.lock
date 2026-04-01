@@ -3043,6 +3043,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ironrdp-web-replay"
+version = "0.1.0"
+dependencies = [
+ "ironrdp-core",
+ "ironrdp-graphics",
+ "ironrdp-pdu",
+ "ironrdp-session",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
 name = "is_terminal_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
