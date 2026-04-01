@@ -40,7 +40,8 @@ export function createReplayStore() {
     let lastTimestamp: DOMHighResTimeStamp | null = null;
     let wasmReplay: WasmReplayInstance | null = $state(null);
 
-    // --- Seek & prefetch abort ---
+    // --- Abort controllers ---
+    let openAbort: AbortController | null = null;
     let seekAbort: AbortController | null = null;
     let prefetchAbort = new AbortController();
 
@@ -90,6 +91,11 @@ export function createReplayStore() {
 
     // --- Load recording metadata ---
     async function initialiseRecording(source: ReplayDataSource): Promise<void> {
+        // Cancel any in-flight open.
+        openAbort?.abort();
+        const controller = new AbortController();
+        openAbort = controller;
+
         dataSource = source;
         loadState = { status: 'loading' };
         duration = 0;
@@ -97,7 +103,8 @@ export function createReplayStore() {
         fetchedUntilMs = 0;
 
         try {
-            const metadata = await dataSource.open();
+            const metadata = await dataSource.open(controller.signal);
+            if (controller.signal.aborted) return; // superseded by a newer initialiseRecording call
             duration = metadata.durationMs;
             totalPdus = metadata.totalPdus;
             loadState = { status: 'ready' };
@@ -189,7 +196,7 @@ export function createReplayStore() {
             if (signal.aborted) return; // superseded — discard error silently
             loadState = {
                 status: 'error',
-                message: e instanceof Error ? e.message : 'Seek failed',
+                message: e instanceof Error ? e.message : 'seek failed',
             };
             playbackState = { ...playbackState, seeking: false, waiting: false, paused: true };
             setPlayerError('seek', e);
@@ -218,12 +225,14 @@ export function createReplayStore() {
 
         playbackState = { ...playbackState, paused: false, waiting: true };
 
+        const signal = prefetchAbort.signal;
         try {
-            await fetchAndPush(fetchedUntilMs, fetchedUntilMs + bufferConfig.targetMs, prefetchAbort.signal);
+            await fetchAndPush(fetchedUntilMs, fetchedUntilMs + bufferConfig.targetMs, signal);
         } catch (e) {
+            if (signal.aborted) return; // superseded by seek or destroy
             loadState = {
                 status: 'error',
-                message: e instanceof Error ? e.message : 'Failed to fetch PDUs',
+                message: e instanceof Error ? e.message : 'failed to fetch PDUs',
             };
             playbackState = { ...playbackState, paused: true, waiting: false };
             setPlayerError('playback', e);
@@ -323,11 +332,18 @@ export function createReplayStore() {
             }
             playbackState = { ...playbackState, waiting: true };
 
+            const signal = prefetchAbort.signal;
             (async () => {
                 try {
-                    await fetchAndPush(fetchedUntilMs, fetchedUntilMs + bufferConfig.targetMs, prefetchAbort.signal);
-                } catch { /* ignore fetch errors during buffer refill */ }
+                    await fetchAndPush(fetchedUntilMs, fetchedUntilMs + bufferConfig.targetMs, signal);
+                } catch (e) {
+                    if (signal.aborted) return; // superseded by seek or destroy
+                    setPlayerError('playback', e);
+                    playbackState = { ...playbackState, waiting: false, paused: true };
+                    return;
+                }
 
+                if (signal.aborted) return; // seek or destroy arrived during fetch
                 if (!playbackState.paused && !playbackState.seeking) {
                     playbackState = { ...playbackState, waiting: false };
                     lastTimestamp = performance.now();
@@ -340,8 +356,11 @@ export function createReplayStore() {
         }
 
         if (bufferAhead < bufferConfig.lowThresholdMs) {
-            // Buffer getting low — prefetch more (fire-and-forget)
-            fetchAndPush(fetchedUntilMs, fetchedUntilMs + bufferConfig.targetMs, prefetchAbort.signal);
+            // Buffer getting low — prefetch more (fire-and-forget).
+            fetchAndPush(fetchedUntilMs, fetchedUntilMs + bufferConfig.targetMs, prefetchAbort.signal)
+                .catch((e) => {
+                    if (!prefetchAbort.signal.aborted) setPlayerError('playback', e);
+                });
         }
 
         // Schedule next tick
@@ -397,9 +416,12 @@ export function createReplayStore() {
             cancelAnimationFrame(rafId);
             rafId = null;
         }
+        openAbort?.abort();
+        openAbort = null;
         seekAbort?.abort();
         seekAbort = null;
         prefetchAbort.abort();
+        prefetchAbort = new AbortController();
         playbackState = { paused: true, waiting: false, seeking: false };
         wasmReplay = null;
         if (dataSource) {

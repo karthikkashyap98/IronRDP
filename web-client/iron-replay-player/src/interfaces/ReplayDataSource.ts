@@ -7,9 +7,20 @@ export interface ReplayMetadata {
     initialHeight?: number;
 }
 
+/** Direction of a PDU relative to the RDP session. */
+export type PduDirection = 0 | 1;
+
+/** Named constants for PDU direction values. */
+export const PduDirection = {
+    /** Client → Server. */
+    Client: 0 as const,
+    /** Server → Client. */
+    Server: 1 as const,
+} as const;
+
 export interface ReplayPdu {
     timestampMs: number;
-    source: number; // 0 = Client (C->S), 1 = Server (S->C)
+    source: PduDirection;
     data: Uint8Array;
 }
 

@@ -99,8 +99,8 @@ export async function fetchFileRanges(
     }
     if (startBytes > 0 && response.status === 200) {
         throw new Error(
-            `Server returned full file (200) instead of requested byte range (expected 206). ` +
-                `The recording server must support HTTP Range requests.`,
+            `server returned full file (200) instead of requested byte range (expected 206), ` +
+                `the recording server must support HTTP Range requests`,
         );
     }
 
@@ -151,8 +151,8 @@ export async function fetchIndexTable(
 ): Promise<IndexTableRow[]> {
     if (totalPDUs > MAX_PDUS) {
         throw new Error(
-            `Recording claims ${totalPDUs.toLocaleString()} PDUs; exceeds maximum of ${MAX_PDUS.toLocaleString()}. ` +
-                `The recording file may be corrupt.`,
+            `recording claims ${totalPDUs.toLocaleString()} PDUs; exceeds maximum of ${MAX_PDUS.toLocaleString()}, ` +
+                `the recording file may be corrupt`,
         );
     }
     const endBytes = HEADER_SIZE + INDEX_ROW_SIZE * totalPDUs - 1;

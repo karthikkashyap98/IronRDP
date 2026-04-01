@@ -2,6 +2,8 @@ import type { ReplayDataSource, ReplayMetadata, ReplayPdu } from './ReplayDataSo
 
 const HEADER_SIZE = 20;
 const INDEX_ROW_SIZE = 17;
+const MAX_PDUS = 1_000_000;
+const SUPPORTED_VERSION = 1;
 
 interface IndexEntry {
     timeOffset: number;
@@ -29,8 +31,17 @@ export class LocalFileDataSource implements ReplayDataSource {
         }
 
         const headerView = new DataView(this.buffer, 0, HEADER_SIZE);
-        const _version = headerView.getUint32(0, false);
+        const version = headerView.getUint32(0, false);
+        if (version !== SUPPORTED_VERSION) {
+            throw new Error(`unsupported recording version ${version}, expected ${SUPPORTED_VERSION}`);
+        }
         this.totalPdus = Number(headerView.getBigUint64(4, false));
+        if (this.totalPdus > MAX_PDUS) {
+            throw new Error(
+                `recording claims ${this.totalPdus.toLocaleString()} PDUs; exceeds maximum of ${MAX_PDUS.toLocaleString()}, ` +
+                    `the recording file may be corrupt`,
+            );
+        }
         this.durationMs = Number(headerView.getBigUint64(12, false));
 
         const indexStart = HEADER_SIZE;
@@ -39,10 +50,15 @@ export class LocalFileDataSource implements ReplayDataSource {
 
         for (let i = 0; i < this.totalPdus; i++) {
             const offset = i * INDEX_ROW_SIZE;
+            const pduLength = indexView.getUint32(offset + 4, false);
+            const byteOffset = Number(indexView.getBigUint64(offset + 8, false));
+            if (byteOffset + pduLength > this.buffer.byteLength) {
+                throw new Error(`PDU ${i} extends beyond file boundary (offset ${byteOffset}, length ${pduLength}, file size ${this.buffer.byteLength})`);
+            }
             this.indexTable.push({
                 timeOffset: indexView.getUint32(offset, false),
-                pduLength: indexView.getUint32(offset + 4, false),
-                byteOffset: Number(indexView.getBigUint64(offset + 8, false)),
+                pduLength,
+                byteOffset,
                 direction: indexView.getUint8(offset + 16),
             });
         }

@@ -94,20 +94,23 @@ message inside the component is independent and clears when a new load starts.
 
 ## PlayerApi
 
-Returned via the `ready` event. All methods are synchronous except `seek`, which is async internally but returns `void`.
+Returned via the `ready` event. Most methods are synchronous; `load`, `seek`, and `reset` return `Promise<void>`.
 
-| Method           | Signature                                  | Description                                                                              |
-| ---------------- | ------------------------------------------ | ---------------------------------------------------------------------------------------- |
-| `load`           | `(dataSource: ReplayDataSource) => void`   | Load a new recording. Resets all playback state.                                         |
-| `togglePlayback` | `() => void`                               | Toggle between play and pause.                                                           |
-| `seek`           | `(positionMs: number) => void`             | Jump to an absolute position in milliseconds.                                            |
-| `setSpeed`       | `(speed: number) => void`                  | Set playback speed multiplier (e.g. `1`, `1.5`, `2`, `3`).                               |
-| `getElapsedMs`   | `() => number`                             | Current playhead position in milliseconds.                                               |
-| `getDurationMs`  | `() => number`                             | Total recording duration in milliseconds (`0` if not yet loaded).                        |
-| `isPaused`       | `() => boolean`                            | Whether playback is currently paused.                                                    |
-| `getLoadState`   | `() => LoadState`                          | Current load state. Use to check for errors programmatically after the `ready` event.    |
-| `getPlayerError` | `() => PlayerError \| null`                | Current error, or `null` if none active.                                                 |
-| `clearError`     | `() => void`                               | Reset the active error. Consumer is responsible for retrying the failed operation.       |
+| Method           | Signature                                              | Description                                                                              |
+| ---------------- | ------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
+| `load`           | `(dataSource: ReplayDataSource) => Promise<void>`      | Load a new recording. Resets all playback state.                                         |
+| `play`           | `() => void`                                           | Start playback. No-op if already playing.                                                |
+| `pause`          | `() => void`                                           | Pause playback. No-op if already paused.                                                 |
+| `togglePlayback` | `() => void`                                           | Toggle between play and pause.                                                           |
+| `seek`           | `(positionMs: number) => Promise<void>`                | Jump to an absolute position in milliseconds.                                            |
+| `reset`          | `() => Promise<void>`                                  | Seek to position 0, preserving play/pause state.                                         |
+| `setSpeed`       | `(speed: number) => void`                              | Set playback speed multiplier (e.g. `1`, `1.5`, `2`, `3`).                               |
+| `getElapsedMs`   | `() => number`                                         | Current playhead position in milliseconds.                                               |
+| `getDurationMs`  | `() => number`                                         | Total recording duration in milliseconds (`0` if not yet loaded).                        |
+| `isPaused`       | `() => boolean`                                        | Whether playback is currently paused.                                                    |
+| `getLoadState`   | `() => LoadState`                                      | Current load state. Use to check for errors programmatically after the `ready` event.    |
+| `getPlayerError` | `() => PlayerError \| null`                            | Current error, or `null` if none active.                                                 |
+| `clearError`     | `() => void`                                           | Reset the active error. Consumer is responsible for retrying the failed operation.       |
 
 ## Module injection
 
@@ -129,12 +132,14 @@ import type { ReplayModule } from '@devolutions/iron-replay-player';
 All public TypeScript types are re-exported from the package entry point:
 
 ```ts
+import { PduDirection } from '@devolutions/iron-replay-player'; // const: PduDirection.Client, PduDirection.Server
 import type {
   ReplayModule, // interface for the WASM backend
   WasmReplayInstance, // interface for a single Replay engine instance
   ReplayDataSource, // interface for supplying recording data
   ReplayMetadata, // { durationMs, totalPdus, initialWidth?, initialHeight? }
   ReplayPdu, // a single PDU with timestamp, direction, and data
+  PduDirection, // 0 | 1 — literal union type for PDU direction
   PlayerError, // { message, phase, cause? } — detail of the 'error' event
   PlayerApi, // programmatic control handle (from 'ready' event)
   PlaybackState, // { paused, waiting, seeking }
@@ -227,7 +232,7 @@ sequenceDiagram
         end
         WASM->>Canvas: putImageData(framebuffer)
         WASM->>Canvas: drawImage(cached cursor OffscreenCanvas)
-        WASM-->>Store: RenderResult { elapsed, session_ended, resolution_changed }
+        WASM-->>Store: RenderResult { current_time_ms, session_ended, resolution_changed }
         alt session ended or elapsed ≥ duration
             Store->>Store: pause playback
         end

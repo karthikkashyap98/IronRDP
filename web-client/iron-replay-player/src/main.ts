@@ -6,4 +6,4 @@ export type { ReplayModule, WasmReplayInstance, RenderResult } from './interface
 export type { PlayerApi } from './interfaces/PlayerApi.js';
 export type { PlaybackState } from './interfaces/PlaybackState.js';
 export type { LoadState } from './interfaces/LoadState.js';
-export type { ReplayDataSource, ReplayMetadata, ReplayPdu, PlayerError } from './interfaces/ReplayDataSource.js';
+export { PduDirection, type ReplayDataSource, type ReplayMetadata, type ReplayPdu, type PlayerError } from './interfaces/ReplayDataSource.js';

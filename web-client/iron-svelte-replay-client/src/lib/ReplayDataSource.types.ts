@@ -8,9 +8,11 @@ export interface ReplayMetadata {
     initialHeight?: number;
 }
 
+export type PduDirection = 0 | 1;
+
 export interface ReplayPdu {
     timestampMs: number;
-    source: number;
+    source: PduDirection;
     data: Uint8Array;
 }
 
