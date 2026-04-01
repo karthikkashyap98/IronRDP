@@ -1,0 +1,24 @@
+[package]
+name = "ironrdp-testsuite-replay"
+version = "0.0.0"
+edition = "2024"
+description = "IronRDP replay test suite"
+publish = false
+autotests = false
+
+[lib]
+doctest = false
+test = false
+
+[[test]]
+name = "integration_tests_replay"
+path = "tests/main.rs"
+harness = true
+
+[dev-dependencies]
+ironrdp-graphics.path = "../ironrdp-graphics"
+ironrdp-session = { path = "../ironrdp-session", features = ["qoi"] }
+ironrdp-web-replay.path = "../ironrdp-web-replay"
+
+[lints]
+workspace = true
